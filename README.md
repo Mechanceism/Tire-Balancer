@@ -38,14 +38,16 @@ To ensure the weight offset is accurate, the frame can also self level and take 
   - Final CAD Model
   - Bill of Materials
 - Diego Garcia:
-  - Documentation
+  - Scheduling
     - Gantt Chart
+    - Weekly Schedule
+  - Documentation
     - Poster
-    - Report 1
+    - Reports
   - Tire Mounting Mechanism
   - FEA (Simulation Analysis)
 - Daouda Diene:
-  - HID Side
+  - HID Code Side
     - Touch Screen Code
     - User interface Graphics
   - Initial CAD Model
@@ -55,3 +57,4 @@ To ensure the weight offset is accurate, the frame can also self level and take 
   - Expo 1 Presentation
   - Expo 2 Presentation
   - Costs
+  - File Review
