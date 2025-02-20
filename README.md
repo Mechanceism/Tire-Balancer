@@ -23,7 +23,7 @@ To ensure the weight offset is accurate, the frame can also self level and take 
  - User adjustable constants for individual tuning
  - Open Source Design for user firendly modding
  - lightweight & Foldable frame for easy storage
- - Low Energy PD2&3/QC2&3 power supply support
+ - Low Energy (relatively) PD2&3/QC2&3 power supply support
  - Safe due to Static/low motion testing
  - Wide range of tire size support
 
