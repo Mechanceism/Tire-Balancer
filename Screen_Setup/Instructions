@@ -1,0 +1,6 @@
+Paste these 2 files in your: 
+C:\Users\...\Documents\Arduino\libraries
+
+Also you need the libraries:
+lvgl  //This is the base library
+LVGL_CVD  //This is an addon specifically for this model of screen
