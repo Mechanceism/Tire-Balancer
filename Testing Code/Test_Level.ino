@@ -40,34 +40,38 @@ void setup() {
 
 void loop() {
     // Read accelerometer data
-    int16_t gxTop, gyTop, gzTop, gxBottom, gyBottom, gzBottom;
-    mpuTop.getRotation(&gxTop, &gyTop, &gzTop);
-    mpuBottom.getRotation(&gxBottom, &gyBottom, &gzBottom);
+    int16_t axTop, ayTop, azTop, axBottom, ayBottom, azBottom;
+    mpuTop.getAcceleration(&axTop, &ayTop, &azTop);
+    mpuBottom.getAcceleration(&axBottom, &ayBottom, &azBottom);
 
-    if (gxBottom >= MaxAllowedBaseAngle || gyBottom >= MaxAllowedBaseAngle || gzBottom >= MaxAllowedBaseAngle) {
+    //float normTopZ = azTop / 16384.0;  
+    //float normBottomX = axBottom / 16384.0;
+    //float normBottomY = ayBottom / 16384.0;
+
+    if (axBottom >= MaxAllowedBaseAngle || ayBottom >= MaxAllowedBaseAngle || azBottom >= MaxAllowedBaseAngle) {
       serial.Print('Error: Base past allowed angle');
       return;
     }
 
-    gxdiff = (gxTop - gxBottom)*cos(gyBottom)
-    gydiff = (gyTop - gyBottom)*cos(gxBottom)
-    gzdiff = (gzTop - gzBottom) //if more abs(morethan 0) then parallelogramming
+    axdiff = (axTop - axBottom)*cos(ayBottom)
+    aydiff = (ayTop - ayBottom)*cos(axBottom)
+    azdiff = (azTop - azBottom) //if more abs(morethan 0) then parallelogramming
 
-    if (gxdiff >= MaxAllowedPlateAngle || gydiff >= MaxAllowedPlateAngle) {
+    if (axdiff >= MaxAllowedPlateAngle || aydiff >= MaxAllowedPlateAngle) {
       serial.Print('Error: Top Plate past allowed angle');
       return;
     }
     
-    if (gzdiff >= MaxAllowedZTwistAngle) {
+    if (azdiff >= MaxAllowedZTwistAngle) {
       serial.Print('Error: Frame parallelogram past allowed angle');
       return;
     }
 
-    actuator1YAngle = map(gyTop, -MaxAllowedPlateAngle, MaxAllowedPlateAngle, 255, -255);
-    actuator2YAngle = map(gyTop, -MaxAllowedPlateAngle, MaxAllowedPlateAngle, 255, -255);
+    actuator1YAngle = map(ayTop, -MaxAllowedPlateAngle, MaxAllowedPlateAngle, 255, -255);
+    actuator2YAngle = map(ayTop, -MaxAllowedPlateAngle, MaxAllowedPlateAngle, 255, -255);
 
-    actuator1PWM = actuator1YAngle + map(gxTop, -MaxAllowedPlateAngle, MaxAllowedPlateAngle, 255, -255);
-    actuator2PWM = actuator2YAngle + map(gxTop, -MaxAllowedPlateAngle, MaxAllowedPlateAngle, 255, -255);
+    actuator1PWM = actuator1YAngle + map(axTop, -MaxAllowedPlateAngle, MaxAllowedPlateAngle, 255, -255);
+    actuator2PWM = actuator2YAngle + map(axTop, -MaxAllowedPlateAngle, MaxAllowedPlateAngle, 255, -255);
     
     // Actuator control (mapping angles to movement)
     controlActuator(actuator1UpPin, actuator1DownPin, actuator1PWMPin, actuator1PWM);
