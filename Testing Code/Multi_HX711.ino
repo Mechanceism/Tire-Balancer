@@ -7,7 +7,7 @@ const int LOADCELL_SCK_PINS[] = {5, 7, 9};   // Clock pins
 HX711 scales[3];
 
 void setup() {
-  Serial.begin(57600);
+  Serial.begin(9600);
   
   for (int i = 0; i < 3; i++) {
     scales[i].begin(LOADCELL_DOUT_PINS[i], LOADCELL_SCK_PINS[i]);
