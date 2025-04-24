@@ -476,6 +476,7 @@ void checkSerialInput() {
   }
 }
 
+// end Level & CM_Calculation (Functions)
 //--------------------------------------------------
 // start Level (Functions)
 
@@ -638,5 +639,6 @@ ISR(TIMER2_COMPA_vect) {
     doPulse = true;  // Trigger the pulse in main loop
   }
 }
-// Start laser (Functions)
+
+// end laser (Functions)
 //-----------------------------------------------------------
