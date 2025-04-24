@@ -1,0 +1,52 @@
+# Change Log for Arduino Nano
+Note there MAY be some information missing, see actual code comments for more info
+
+## SD2_Nano_V0.1
+- Combined Test Code:
+  - Level_With_Serial
+    - Changed the Actuation location logic from sin/cos axis length to vector addition
+  - CM_Calculation
+    - Angle calculation works but weightmass is a bit messed up still
+  - Chatgpt6_WorseSpeedCtrl
+    - Changed by giving each actuator proper proportioning for pitch and roll values
+    - Angle acceleration compensation (alpha) actual works now
+    - Magnitude of gravity calculation added for debug
+- Added Serial Singular Commands:
+  - start / stop (Begins / Stops Leveling)
+  - LDon / LDoff (Shows / Hides Leveling debug)
+  - BDon / BDoff (Shows / Hides Balancing debug)
+  - calibrate (Sets current WA, WB, WC values to 0)
+- Added Serial Variable Commands:
+  - alpha"#" (sets alpha value)
+  - minspeed"#" (sets min actuator speed value)
+  - maxspeed"#" (sets max actuator speed value)
+  - LDcycle"#" (shows Leveling debug for "#" of cycles)
+  - BDcycle"#" (shows Balancing debug for "#" of cycles)
+
+## SD2_Nano_V0.2
+- Added Test Code:
+  - ClocksPerCycle
+  - Temp_SD_Laser (Added and Removed)
+    - (Replaced With) No_Library_Servo_Laser
+      - Basically this is code that inputs 0 to 360 degrees and turns a 180 degree servo and switches the laser to on the correct side
+      - This recreates a pwm signal on a non-pwm pin and does not mess with the internal timers
+      - This builds off No_Library_Servo
+      - DO NOT USE Servo.h
+        - The nano has 2 builtin timers (1&2) and for some reason Servo.h deactivates PWM on pins 9 and 10, aka actuator 1
+- Added Mass Compensation
+  - Takes the weight calculated on the load cells and adds voltage to increase the power to lift a tire while not over shooting velocity
+- Added Serial Singular Commands:
+  - Laseron / Laseroff (Enables / disables the laser and servo)
+  - CPSon / CPSoff (Shows / Hides ClocksPerCycle)
+  - MCon / MCoff (Enables / disables compensation for the actuators to get more voltage with more weight added)
+- Added Serial Variable Commands:
+  - RimD"#" (sets Rim Diameter value)
+  - TreadW"#" (sets Tread Width value)
+  - SideWallRatio"#" (sets the side wall percentage value)
+  - TestMass"#" (Adds mass directly to WA,WB, and WC of the amount "#" in kg)
+  - rollOffset"#" (Offsets the roll axis by "#" degrees)
+  - pitchOffset"#" (Offsets the pitch axis by "#" degrees)
+- Note:
+  - Angle calculation works but weightmass is a bit messed up still
+  - Since the servo code was rewritten, pulsewidth is not a linear corelation to degree angle
+    - needs compensation still
