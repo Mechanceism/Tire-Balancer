@@ -50,3 +50,14 @@ Note there MAY be some information missing, see actual code comments for more in
   - Angle calculation works but weightmass is a bit messed up still
   - Since the servo code was rewritten, pulsewidth is not a linear corelation to degree angle
     - needs compensation still
+
+## SD2_Nano_V0.3
+- Added calibration for mpuBottom
+- Added Base Angle calculation
+  - under leveling code
+  - error printed to serial if over MaxBaseAngle (13 degrees currently)
+  - There is no reason to attempt to level if the actuators cannot reach their final destination
+- Added BalanceState that controls when the average of WeightAngle and WeightMass is taken
+  - Error message printed to serial and cancels Balancing if currently Leveling
+- Added Serial Singular Commands:
+  - Balance (Takes the average of WeightAngle and WeightMass)
