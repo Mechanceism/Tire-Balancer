@@ -61,3 +61,10 @@ Note there MAY be some information missing, see actual code comments for more in
   - Error message printed to serial and cancels Balancing if currently Leveling
 - Added Serial Singular Commands:
   - Balance (Takes the average of WeightAngle and WeightMass)
+
+## SD2_Nano_V0.4
+- Added Laser Position Offset "LaserOffset" becasue the laser is about 90 degrees off from 0
+  - Also fixed the accidental inversion of the laser angle
+- Also some serial bug fixes to get it to work with screen release "CYD_SD2_V0.1"
+- Not going to lie this was worked on over a dual all nighter to get the screen code working before the final presentation
+  - aka there is probably more that I added (Very Professional)
