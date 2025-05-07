@@ -11,6 +11,7 @@ You must do the following:
 - Extract the zip file
 - Open the folder and see the folders "ui" and "libraries"
   - Do not copy and paste this to your libraries folder
+  - Included is the folder "V{Version Number}" which contains the squareline files incase you want to edit the UI
 - Open the "ui" folder
 - Open the "ui.ino" file
   - I am personally using 2.3.4 of the arduino ide in case this is important for bug fixing
