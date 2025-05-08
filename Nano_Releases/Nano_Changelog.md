@@ -65,6 +65,19 @@ Note there MAY be some information missing, see actual code comments for more in
 ## SD2_Nano_V0.4
 - Added Laser Position Offset "LaserOffset" becasue the laser is about 90 degrees off from 0
   - Also fixed the accidental inversion of the laser angle
+  - Added library Math.h to use "mod()"
 - Also some serial bug fixes to get it to work with screen release "CYD_SD2_V0.1"
 - Not going to lie this was worked on over a dual all nighter to get the screen code working before the final presentation
   - aka there is probably more that I added (Very Professional)
+ 
+## SD2_Nano_V0.5
+- Serial
+  - Added "outputExponent" (Controls speed curve of the actuators)
+  - Added TestMasson/off for debug
+- Fixed TestMass Logic so it won't delete last sent TestMass amount using TestMassTemp
+- Added "Multi_HX711_Calibrate" to the test code
+  - This gives you the values for Scale1Calibration, Scale2Calibration, and Scale3Calibration
+- Fixed the Moment Balance Logic
+- Fixed the RimD and TheadW so it actually updates with serial commands
+- Removed XWeight,YWeight as they were bad duplicates of the centroid calculation
+- Added Percent of weight on the side of the center of mass
