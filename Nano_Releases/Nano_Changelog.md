@@ -80,4 +80,8 @@ Note there MAY be some information missing, see actual code comments for more in
 - Fixed the Moment Balance Logic
 - Fixed the RimD and TheadW so it actually updates with serial commands
 - Removed XWeight,YWeight as they were bad duplicates of the centroid calculation
-- Added Percent of weight on the side of the center of mass
+- Added percentinRangeWeight and inRangeWeight
+  - Basically this says how much weight is on the same side as the CMAngle
+  - This is important because the moment calculation for how much weight to be added needs to be based on the mass difference of each side and not of the total tire weight
+  - This means that all past versions works for testing point masses but not practical tire masses
+  - TLDR old code not work, new code "should" be more acurate for all scenarios
