@@ -1,4 +1,4 @@
-# Tire-Balancer
+# Self Leveling Static Tire Balancer
 
 ## Senior Design Project: Team 62
  Team name: 3DC
