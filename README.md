@@ -33,10 +33,13 @@ To ensure the weight offset is accurate, the frame can also self level and take 
     - Leveling calculation
     - Weight location calculation
     - Weight amount calculation
+  - HID Code Side
+    - Touch Screen Code
+    - User interface Graphics
   - Frame Design
-  - Frame Assembly
-  - Final CAD Model
+  - DFM CAD Model
   - Bill of Materials
+  - Frame Assembly
 - Diego Garcia:
   - Scheduling
     - Gantt Chart
@@ -47,10 +50,7 @@ To ensure the weight offset is accurate, the frame can also self level and take 
   - Tire Mounting Mechanism
   - FEA (Simulation Analysis)
 - Daouda Diene:
-  - HID Code Side
-    - Touch Screen Code
-    - User interface Graphics
-  - Initial CAD Model
+  - Initial Preview CAD Model
 - Destinee Hicks:
   - Periodic team participation
 - Shared:
