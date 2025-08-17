@@ -72,7 +72,7 @@ Note there MAY be some information missing, see actual code comments for more in
  
 ## SD2_Nano_V0.5
 - Serial
-  - Added "outputExponent" (Controls speed curve of the actuators)
+  - Added "outputExponent" (Controls speed curve of the actuators) variable: "outputExponent"
   - Added TestMasson/off for debug
 - Fixed TestMass Logic so it won't delete last sent TestMass amount using TestMassTemp
 - Added "Multi_HX711_Calibrate" to the test code
