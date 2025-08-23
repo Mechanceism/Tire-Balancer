@@ -87,6 +87,7 @@ Note there MAY be some information missing, see actual code comments for more in
 - Removed XWeight,YWeight as they were bad duplicates of the centroid calculation
 - Added percentinRangeWeight and inRangeWeight
   - Basically this says how much weight is on the same side as the CMAngle
-  - This is important because the moment calculation for how much weight to be added needs to be based on the mass difference of each side and not of the total tire weight
+  - This is important because the center of mass calculation for how much weight to be needs to be added needs to be based on the mass difference of the side with the most weight and its opposite side
+    - This cancels out the mass that would be balanced without the extra unbalancing weight, leaving only the mass that is needed to counter
   - This means that all past versions works for testing point masses but not practical tire masses
-  - TLDR old code not work, new code "should" be more acurate for all scenarios
+  - TLDR old code not work, new code "should" be more acurate for all scenarios, needs testing but theory works
