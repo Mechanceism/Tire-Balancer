@@ -74,6 +74,11 @@ Note there MAY be some information missing, see actual code comments for more in
 - Serial
   - Added "outputExponent" (Controls speed curve of the actuators) variable: "outputExponent"
   - Added TestMasson/off for debug
+  - Added REon/REoff for ReportErrors on or off.
+    - Currently just for the hx711 sensor errors, mainly for boot. OFF by default, turn ON for initial setup. Uses ReportErrorsState bool flag.
+  - Changed most rarly used serial writes to write from flash and not ram
+    - SIGNIFICATLY reduces ram usage
+    - Also fixed bugs where some serial writes would disappeear from hitting the ram cap
 - Fixed TestMass Logic so it won't delete last sent TestMass amount using TestMassTemp
 - Added "Multi_HX711_Calibrate" to the test code
   - This gives you the values for Scale1Calibration, Scale2Calibration, and Scale3Calibration
