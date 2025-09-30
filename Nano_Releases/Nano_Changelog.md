@@ -76,18 +76,27 @@ Note there MAY be some information missing, see actual code comments for more in
   - Added TestMasson/off for debug
   - Added REon/REoff for ReportErrors on or off.
     - Currently just for the hx711 sensor errors, mainly for boot. OFF by default, turn ON for initial setup. Uses ReportErrorsState bool flag.
+  - Commented out the delay(100); from loop
+    - If REon is set then it will spam serial with error messages if the delay is not there
+    - I think the hx711's are just slow? Anyway, the data read I've validated to still be accurate. So go figure if they say they aren't connected
+    - Hopefully this might fix some esp and nano connection issues
   - Changed most rarly used serial writes to write from flash and not ram
     - SIGNIFICATLY reduces ram usage
     - Also fixed bugs where some serial writes would disappeear from hitting the ram cap
 - Fixed TestMass Logic so it won't delete last sent TestMass amount using TestMassTemp
+- Removed moment logic from ReadMass()
+    - Apperently after testing and calibrating the load cells at a different location the the calibration value was very different from the previous calibration value. So after double checking, these load cells are not affected by the distance of force applied. They only count the mass applied in the vertical direction regardless of the force away from the sensor. I'd imagine that at some point this would become an issue at a further distance due to flex, but we are well within small angle approximation to not worry at 6 and under inches from the plate to the furthest measuring point.
 - Added "Multi_HX711_Calibrate" to the test code
   - This gives you the values for Scale1Calibration, Scale2Calibration, and Scale3Calibration
 - Fixed the Moment Balance Logic
 - Fixed the RimD and TheadW so it actually updates with serial commands
 - Removed XWeight,YWeight as they were bad duplicates of the centroid calculation
-- Added percentinRangeWeight and inRangeWeight
+- Added outRangeWeight, inRangeWeight, %inRangeWeight, and inOverout
   - Basically this says how much weight is on the same side as the CMAngle
   - This is important because the center of mass calculation for how much weight to be needs to be added needs to be based on the mass difference of the side with the most weight and its opposite side
     - This cancels out the mass that would be balanced without the extra unbalancing weight, leaving only the mass that is needed to counter
-  - This means that all past versions works for testing point masses but not practical tire masses
-  - TLDR old code not work, new code "should" be more acurate for all scenarios, needs testing but theory works
+  - ~This means that all past versions works for testing point masses but not practical tire masses~
+  - ~TLDR old code not work, new code "should" be more acurate for all scenarios, needs testing but theory works~
+  - Ok so after some testing with this new setup I've relized how I originally coded this (Sorry 4 month break). So these new values are cool to have but its just the same data we already had just in a different more understandable fasion. It does take more processing time to solve these new values but its really a debate on how accesable I want to make this for modifications. Likely, I will leave it in but comment it out when I get it working how I like.
+  - By fixing the moment logic from ReadMass(), it also fixed a bug in how these values are calculated since that is the step before this calculation
+  - inRangeWeight is basically CMweight
