@@ -1,0 +1,10 @@
+SET(SOURCES ui_StartMenu.c
+    ui_OptionMenu.c
+    ui_LevelLoadingMenu.c
+    ui_BalanceLoadingMenu.c
+    ui_CreditsMenu.c
+    ui.c
+    ui_comp_hook.c
+    ui_helpers.c)
+
+add_library(ui ${SOURCES})

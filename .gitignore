@@ -1,0 +1,19 @@
+# Arduino / arduino-cli build output
+build/
+*.hex
+*.elf
+*.bin
+*.map
+
+# SquareLine Studio working files
+Screen/squareline/backup/
+Screen/squareline/cache/
+Screen/squareline/autosave/
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store
