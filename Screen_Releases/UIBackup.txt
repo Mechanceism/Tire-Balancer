@@ -1,0 +1,380 @@
+#include <lvgl.h>
+#include <TFT_eSPI.h>
+#include <ui.h>
+#include <ctype.h>
+#include <Wire.h>
+
+#define I2C_SDA 33
+#define I2C_SCL 32
+#define TOUCH_ADDR 0x15
+
+#define SCREEN_WIDTH 240  // Your actual screen resolution
+#define SCREEN_HEIGHT 320
+#define X_MIN 30  // Set these to 0 and touch near the screen boarder to get these values
+#define X_MAX 210
+#define Y_MIN 9
+#define Y_MAX 300
+bool InvertXY = false;  // enable/disable Inxerting the X and Y axis
+bool MirrorX = true;   // enable/disable Mirroring the X axis
+bool MirrorY = false;   // enable/disable Mirroring the Y axis
+
+int TreadW = 0;
+int SideWallRatio = 0;
+int RimD = 0;
+float WeightAngleAvg = 0;
+float WeightMassAvg = 0;
+float TotalWeight = 0;
+
+
+/*Don't forget to set Sketchbook location in File/Preferences to the path of your UI project (the parent foder of this INO file)*/
+
+/*Change to your screen resolution*/
+static const uint16_t screenWidth  = 320;
+static const uint16_t screenHeight = 240;
+
+static lv_disp_draw_buf_t draw_buf;
+static lv_color_t buf[ screenWidth * screenHeight / 10 ];
+
+TFT_eSPI tft = TFT_eSPI(screenWidth, screenHeight); /* TFT instance */
+
+#if LV_USE_LOG != 0
+/* Serial debugging */
+void my_print(const char * buf)
+{
+    Serial.printf(buf);
+    Serial.flush();
+}
+#endif
+
+/* Display flushing */
+void my_disp_flush( lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p )
+{
+    uint32_t w = ( area->x2 - area->x1 + 1 );
+    uint32_t h = ( area->y2 - area->y1 + 1 );
+
+    tft.startWrite();
+    tft.setAddrWindow( area->x1, area->y1, w, h );
+    tft.pushColors( ( uint16_t * )&color_p->full, w * h, true );
+    tft.endWrite();
+
+    lv_disp_flush_ready( disp );
+}
+
+/*Read the touchpad*/
+void my_touchpad_read( lv_indev_drv_t * indev_driver, lv_indev_data_t * data )
+{
+    uint16_t touchX = 0, touchY = 0;
+
+    bool touched = false;//tft.getTouch( &touchX, &touchY, 600 );
+
+    // Call function to get touch data and update x, y, touched
+    processTouchData(touchY, touchX, touched);
+
+    if( !touched )
+    {
+        data->state = LV_INDEV_STATE_REL;
+    }
+    else
+    {
+        data->state = LV_INDEV_STATE_PR;
+
+        /*Set the coordinates*/
+        data->point.x = touchX;
+        data->point.y = touchY;
+
+        //Serial.print( "Data x " );
+        //Serial.println( touchX );
+
+        //Serial.print( "Data y " );
+        //Serial.println( touchY );
+    }
+}
+
+void setup()
+{
+    Wire.begin(I2C_SDA, I2C_SCL);
+    Serial.begin(9600); // USB to computer, faster for monitor
+    Serial1.begin(9600, SERIAL_8N1, 1, 3);  // Serial1 to Nano
+    
+    String LVGL_Arduino = "Hello Arduino! ";
+    LVGL_Arduino += String('V') + lv_version_major() + "." + lv_version_minor() + "." + lv_version_patch();
+
+    Serial1.println( LVGL_Arduino );
+    Serial1.println( "I am LVGL_Arduino" );
+
+    lv_init();
+
+#if LV_USE_LOG != 0
+    lv_log_register_print_cb( my_print ); /* register print function for debugging */
+#endif
+
+    tft.begin();          /* TFT init */
+    tft.setRotation( 1 ); /* Landscape orientation, flipped */
+
+    lv_disp_draw_buf_init( &draw_buf, buf, NULL, screenWidth * screenHeight / 10 );
+
+    /*Initialize the display*/
+    static lv_disp_drv_t disp_drv;
+    lv_disp_drv_init( &disp_drv );
+    /*Change the following line to your display resolution*/
+    disp_drv.hor_res = screenWidth;
+    disp_drv.ver_res = screenHeight;
+    disp_drv.flush_cb = my_disp_flush;
+    disp_drv.draw_buf = &draw_buf;
+    lv_disp_drv_register( &disp_drv );
+
+    /*Initialize the (dummy) input device driver*/
+    static lv_indev_drv_t indev_drv;
+    lv_indev_drv_init( &indev_drv );
+    indev_drv.type = LV_INDEV_TYPE_POINTER;
+    indev_drv.read_cb = my_touchpad_read;
+    lv_indev_drv_register( &indev_drv );
+
+
+    ui_init();
+    // Buttons
+    lv_obj_add_event_cb(ui_CalibrateButton, CalibrateButton_event_handler, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_LaserButton, LaserButton_event_handler, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_BalanceButton, BalanceButton_event_handler, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_BalanceCancelButton, BalanceCancelButton_event_handler, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_LevelButton, LevelButton_event_handler, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_LevelCancelButton, LevelCancelButton_event_handler, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_TireInfoEnterButton, TireInfoEnterButton_event_handler, LV_EVENT_ALL, NULL);
+    // Sliders
+    lv_obj_add_event_cb(ui_TreadWidthSlider, TreadWidthSlider_event_handler, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_SideWallPercentSlider, SideWallPercentSlider_event_handler, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_RimDiameterSlider, RimDiameterSlider_event_handler, LV_EVENT_ALL, NULL);
+
+    Serial1.println( "Setup done" );
+}
+
+void loop()
+{
+    lv_timer_handler(); /* let the GUI do its work */
+    checkSerialInput();
+    delay(5);
+}
+
+// Function to process touch data
+void processTouchData(uint16_t &touchX, uint16_t &touchY, bool &touched) {
+  Wire.beginTransmission(TOUCH_ADDR);
+  Wire.write(0x00); // Basically wakes up the chip to ask it for stuff
+  Wire.endTransmission(false);
+
+  Wire.requestFrom(TOUCH_ADDR, 9);
+
+  if (Wire.available() == 9) {
+    uint8_t buf[9];
+    for (int i = 0; i < 9; i++) {
+      buf[i] = Wire.read();
+    }
+
+    uint8_t fingerNum = buf[2];
+    if (fingerNum == 1) {
+      uint16_t rawX = (buf[3] << 8) | buf[4];
+      uint16_t rawY = (buf[5] << 8) | buf[6];
+
+      uint16_t tempX = (rawX & 0x8000) ? (rawX - 0x8000) : rawX;
+      uint16_t tempY = rawY;
+
+      if (MirrorX) {
+        tempX = map(tempX, X_MAX, X_MIN, 0, SCREEN_WIDTH);
+      } else {
+        tempX = map(tempX, X_MIN, X_MAX, 0, SCREEN_WIDTH);
+      }
+
+      if (MirrorY) {
+        tempY = map(tempY, Y_MAX, Y_MIN, 0, SCREEN_HEIGHT);
+      } else {
+        tempY = map(tempY, Y_MIN, Y_MAX, 0, SCREEN_HEIGHT);
+      }
+
+      uint16_t SCREEN_X = SCREEN_WIDTH;
+      uint16_t SCREEN_Y = SCREEN_HEIGHT;
+
+      if (InvertXY) {
+        uint16_t tempXMirror = tempY;
+        tempY = tempX;
+        tempX = tempXMirror;
+        uint16_t SCREEN_HEIGHTMirror = SCREEN_Y;
+        SCREEN_Y = SCREEN_WIDTH;
+        SCREEN_X = SCREEN_HEIGHTMirror;
+      }
+
+      // Validate X/Y before updating
+      if (tempX <= SCREEN_X && tempY <= SCREEN_Y) {
+        touchX = tempX;
+        touchY = tempY;
+        touched = true; // A touch is detected
+      }
+      else {
+        touched = false; // No valid touch data
+      }
+    } else {
+      touched = false; // No touch or multi-touch, so set to false
+    }
+  }
+}
+
+void CalibrateButton_event_handler(lv_event_t * e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    
+    if(code == LV_EVENT_CLICKED) {
+        Serial1.println("calibrate");
+    }
+}
+void LaserButton_event_handler(lv_event_t * e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    
+    if(code == LV_EVENT_CLICKED) {
+        Serial1.println("LaserToggle");
+    }
+}
+void BalanceButton_event_handler(lv_event_t * e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    
+    if(code == LV_EVENT_CLICKED) {
+        Serial1.println("Balance");
+    }
+}
+void BalanceCancelButton_event_handler(lv_event_t * e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    
+    if(code == LV_EVENT_CLICKED) {
+        Serial1.println("BalanceCancel");
+    }
+}
+void LevelButton_event_handler(lv_event_t * e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    
+    if(code == LV_EVENT_CLICKED) {
+        Serial1.println("Start");
+    }
+}
+void LevelCancelButton_event_handler(lv_event_t * e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    
+    if(code == LV_EVENT_CLICKED) {
+        Serial1.println("Stop");
+    }
+}
+void TireInfoEnterButton_event_handler(lv_event_t * e) {
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if(code == LV_EVENT_CLICKED) {
+        Serial1.print("TreadW"); Serial1.print(TreadW);
+        Serial1.print(" SideWallRatio"); Serial1.print(SideWallRatio);
+        Serial1.print(" RimD"); Serial1.println(RimD);
+        
+    }
+}
+void TreadWidthSlider_event_handler(lv_event_t * e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    
+    if(code == LV_EVENT_VALUE_CHANGED) {
+        lv_obj_t * slider = lv_event_get_target(e);
+        int val = lv_slider_get_value(slider);
+        
+        // Update your global variable
+        TreadW = val;
+
+        // Update the label text
+        //static char buf[8];
+        //snprintf(buf, sizeof(buf), "%d", val);
+        //lv_label_set_text(ui_TireWidthValueLabel, buf);
+    }
+}
+void SideWallPercentSlider_event_handler(lv_event_t * e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    
+    if(code == LV_EVENT_VALUE_CHANGED) {
+        lv_obj_t * slider = lv_event_get_target(e);
+        int val = lv_slider_get_value(slider);
+        
+        // Update your global variable
+        SideWallRatio = val;
+    }
+}
+void RimDiameterSlider_event_handler(lv_event_t * e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    
+    if(code == LV_EVENT_VALUE_CHANGED) {
+        lv_obj_t * slider = lv_event_get_target(e);
+        int val = lv_slider_get_value(slider);
+        
+        // Update your global variable
+        RimD = val;
+    }
+}
+void updateWeightAddedLabel() {
+    static char buf[8];
+    snprintf(buf, sizeof(buf), "%0.2f", WeightMassAvg);
+    lv_label_set_text(ui_WeightAddedValueLabel, buf);
+}
+void updateWeightAngleValueLabel() {
+    static char buf[8];
+    snprintf(buf, sizeof(buf), "%0.2f", WeightAngleAvg);
+    lv_label_set_text(ui_WeightAngleValueLabel, buf);
+}
+void updateTotalWeightValueLabel() {
+    static char buf[8];
+    snprintf(buf, sizeof(buf), "%0.2f", TotalWeight);
+    lv_label_set_text(ui_TotalWeightValueLabel, buf);
+}
+
+void checkSerialInput() {
+  if (Serial1.available() > 0) {  // <--- Serial1 instead of Serial
+    String input = Serial1.readStringUntil('\n');  // <--- Serial1
+    input.trim();  // Clean up any whitespace or line endings
+
+    if (input.length() == 0) return;
+
+    // Handle single-word commands
+    if (input.equalsIgnoreCase("BalanceCompleted")) {
+      lv_scr_load_anim(ui_OptionMenu, LV_SCR_LOAD_ANIM_FADE_ON, 250, 0, false);
+      return;
+    } else if (input.equalsIgnoreCase("LevelCompleted")) {
+      lv_scr_load_anim(ui_OptionMenu, LV_SCR_LOAD_ANIM_FADE_ON, 250, 0, false);
+      return;
+    }
+
+    // Parse multiple command=value entries (e.g., WeightAngleAvg30.5)
+    String currentKey = "";
+    String currentValue = "";
+    bool parsingValue = false;
+
+    for (int i = 0; i <= input.length(); i++) {
+      char c = input.charAt(i);
+      if (isAlpha(c) && !parsingValue) {
+        currentKey += c;  // Still building the key
+      } 
+      else if ((isDigit(c) || c == '.' || c == '-') && c != '\0') {
+        currentValue += c;
+        parsingValue = true;
+      } 
+      else {
+        if (currentKey.length() > 0 && currentValue.length() > 0) {
+          float value = currentValue.toFloat();
+
+          if (currentKey.equalsIgnoreCase("WeightAngleAvg")) {
+            WeightAngleAvg = value;
+            updateWeightAngleValueLabel();
+          }
+          else if (currentKey.equalsIgnoreCase("WeightMassAvg")) {
+            WeightMassAvg = value;
+            updateWeightAddedLabel();
+          }
+          else if (currentKey.equalsIgnoreCase("TotalWeight")) {
+            TotalWeight = value;
+            updateTotalWeightValueLabel();
+          }
+
+          // Reset for the next token
+          currentKey = "";
+          currentValue = "";
+          parsingValue = false;
+        }
+      }
+    }
+  }
+}
