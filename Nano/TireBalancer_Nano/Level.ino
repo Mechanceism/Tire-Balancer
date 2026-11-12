@@ -208,7 +208,7 @@ void levelTick(uint32_t now, float dt) {
 
   if (staleTicks >= STALE_TICKS)   { levelAbort(ERR_MPU_TOP);   return; }
   if (baseAngle >= MAX_BASE_ANGLE) { levelAbort(ERR_BASE_TILT); return; }
-  if (autoStop && now - levelStartMs > LEVEL_TIMEOUT_MS) { levelAbort(ERR_LEVEL_TIMEOUT); return; }
+  if (autoStop && (int32_t)(now - levelStartMs) > (int32_t)LEVEL_TIMEOUT_MS) { levelAbort(ERR_LEVEL_TIMEOUT); return; }
 
   float ePitch = cfg.pitchOffset + pitchTrim - pitchF;
   float eRoll  = cfg.rollOffset  + rollTrim  - rollF;

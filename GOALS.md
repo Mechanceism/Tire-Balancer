@@ -38,7 +38,18 @@ Done in code, compiles, **not yet run on the machine**:
 - [x] Clip-on vs stick-on weight position
 - [x] Link indicator, checksums and resend so a lost message is visible
 
+Bench-tested on the real boards (2026-11-12), each board on its own USB:
+
+- [x] Nano: boots, Ping, Status, both MPUs read, all three HX711s at 10 SPS,
+      Tare, Balance with test mass, error events, Ack, checksum rejection
+- [x] Screen: pings, syncs settings on link-up and after `Ready`, Acks events,
+      ignores corrupted lines (tested by playing the Nano from the PC)
+- [x] Old firmware read back first (docs/firmware-backup) - includes V0.5
+
 To do on the machine:
+
+- [ ] Look at the screen: results panel, units switches, corner status, pop-ups
+- [ ] Install the level converter and connect the boards
 
 - [ ] Confirm the actuators move toward level (direction check in docs/Setup.md)
 - [ ] Confirm the screen hears the Nano; if not, the RX-pin test in docs/Wiring.md

@@ -5,6 +5,9 @@ build/
 *.bin
 *.map
 
+# Large local firmware image (see docs/firmware-backup/README.md)
+docs/firmware-backup/*.bin
+
 # SquareLine Studio working files
 Screen/squareline/backup/
 Screen/squareline/cache/

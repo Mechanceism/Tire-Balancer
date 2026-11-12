@@ -45,6 +45,7 @@ float weightR     = 0;      // radius where the balance weight is placed (0 = ri
 
 // Live readings
 float weight[3]  = {0, 0, 0};   // kg on load cells A, B, C
+uint8_t hxReads[3] = {0, 0, 0}; // readings per load cell since the last scale debug line
 float pitchF     = 0;           // filtered platform pitch, deg
 float rollF      = 0;           // filtered platform roll, deg
 float baseAngle  = 0;           // frame tilt, deg
@@ -78,9 +79,11 @@ void setup() {
 
 void loop() {
   static uint32_t lastLevelTick = 0;
-  uint32_t now = millis();
 
+  // Commands first, THEN read the clock: anything a command starts gets a
+  // timestamp <= now, so "now - start" can never wrap round to a huge number.
   protocolPoll();
+  uint32_t now = millis();
 
   if (now - lastLevelTick >= LEVEL_PERIOD_MS) {
     float dt = (now - lastLevelTick) * 0.001f;
@@ -139,6 +142,10 @@ void debugTick(uint32_t now) {
       Serial.print(F(" Ang:")); Serial.print(angle, 1);
       Serial.print(F(" M:"));   Serial.print(massG, 1);
     }
-    Serial.println();
+    // readings per load cell in this 0.5 s: about 5 each at 10 SPS, 40 at 80 SPS
+    Serial.print(F(" n:"));   Serial.print(hxReads[0]);
+    Serial.print(',');        Serial.print(hxReads[1]);
+    Serial.print(',');        Serial.println(hxReads[2]);
+    hxReads[0] = hxReads[1] = hxReads[2] = 0;
   }
 }

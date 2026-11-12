@@ -496,7 +496,7 @@ static void linkTick(uint32_t now) {
     if (!linkUp && !statusNoteUntil) showLinkState();      // keep the rx / bad counters fresh
   }
 
-  if (linkUp && now - lastHeardMs > LINK_TIMEOUT_MS) {
+  if (linkUp && (int32_t)(now - lastHeardMs) > (int32_t)LINK_TIMEOUT_MS) {
     linkUp = false;
     showLinkState();
   }
@@ -705,8 +705,10 @@ void loop()
 {
   lv_timer_handler(); /* let the GUI do its work */
 
-  uint32_t now = millis();
+  // Receive first, THEN read the clock, so lastHeardMs can never be later
+  // than "now" (that made "now - lastHeardMs" wrap and drop the link).
   nanoReceiveTick();
+  uint32_t now = millis();
   linkTick(now);
   nanoSendTick(now);
 

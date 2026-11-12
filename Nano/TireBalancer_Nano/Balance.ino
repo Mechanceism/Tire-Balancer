@@ -105,6 +105,7 @@ void scalePoll(uint32_t now) {
     if (hx[i].is_ready()) {
       raw[i]   = (int32_t)hx[i].read();
       fresh[i] = true;
+      if (hxReads[i] < 255) hxReads[i]++;
     }
   }
 
@@ -116,7 +117,7 @@ void scalePoll(uint32_t now) {
       jobSetStart = now;
       if (++jobCount >= JOB_SAMPLES) jobFinish();
     }
-  } else if (job != JOB_NONE && now - jobSetStart > SCALE_TIMEOUT_MS) {
+  } else if (job != JOB_NONE && (int32_t)(now - jobSetStart) > (int32_t)SCALE_TIMEOUT_MS) {
     job   = JOB_NONE;
     state = ST_IDLE;
     eventError(ERR_SCALE);
