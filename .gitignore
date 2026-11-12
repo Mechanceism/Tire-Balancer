@@ -20,3 +20,6 @@ Screen/squareline/autosave/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# ...except the firmware read back from the boards
+!docs/firmware-backup/*.hex
