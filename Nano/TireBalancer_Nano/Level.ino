@@ -403,8 +403,8 @@ void levelTick(uint32_t now, float dt) {
   toMachine(cfg.topAxis, s, a);          // accel, machine axes
   toMachine(cfg.topAxis, s + 3, g);      // gyro, machine axes
   int16_t ax = a[0], ay = a[1], az = a[2];
-  gyroX = g[0];
-  gyroY = g[1];
+  gyroX = g[0] - (int16_t)gyroBiasX;   // with the zero removed: ~0 when still if the zero is right
+  gyroY = g[1] - (int16_t)gyroBiasY;
   topAz = az;
 
   // Gyro zero drifts (it was -4 deg/s on one axis when first measured, and it
@@ -514,8 +514,10 @@ void levelTick(uint32_t now, float dt) {
 
   // Mass compensation: a loaded platform needs more drive for the same speed.
   // Actuator 1 sits between load cells A and B, actuator 2 between B and C.
+  // Only after a Tare: before it, the arms' own weight reads as load (6.2 kg on
+  // A) and would give one actuator ~30% more drive than the other.
   float g1 = 1, g2 = 1;
-  if (massComp) {
+  if (massComp && tared) {
     g1 = 1 + constrain(sqrt(weight[0] * weight[0] + weight[1] * weight[1]) / MASS_COMP_FULL_KG, 0, 1);
     g2 = 1 + constrain(sqrt(weight[1] * weight[1] + weight[2] * weight[2]) / MASS_COMP_FULL_KG, 0, 1);
   }

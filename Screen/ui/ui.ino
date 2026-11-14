@@ -215,7 +215,7 @@ void my_touchpad_read( lv_indev_drv_t * indev_driver, lv_indev_data_t * data )
 // (for example all the settings after the Nano restarts) cannot overflow the
 // Nano's 64-byte receive buffer. Every line gets a "*XX" checksum.
 #define TXQ_SIZE 24
-#define TXQ_LEN  24
+#define TXQ_LEN  48
 static char     txq[TXQ_SIZE][TXQ_LEN];
 static uint8_t  txqHead = 0, txqCount = 0;
 static uint32_t lastSendMs = 0;
@@ -242,6 +242,26 @@ void nanoSend(const char *fmt, ...) {
 void nanoSendNow(const char *cmd) {
   txqCount = 0;
   nanoWriteLine(cmd);
+}
+
+// Pass-through: a line typed into the screen's USB port (115200, newline) is
+// sent on to the Nano, so the Nano can be commanded from a PC with everything
+// wired up. The reply shows up in the USB log as "< ...".
+static void usbPassthroughTick() {
+  static char    line[TXQ_LEN];
+  static uint8_t n = 0;
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\n' || c == '\r') {
+      if (n > 0) {
+        line[n] = 0;
+        nanoSend("%s", line);
+      }
+      n = 0;
+    } else if (n < sizeof(line) - 1) {
+      line[n++] = c;
+    }
+  }
 }
 
 static void nanoSendTick(uint32_t now) {
@@ -749,6 +769,7 @@ void loop()
   // Receive first, THEN read the clock, so lastHeardMs can never be later
   // than "now" (that made "now - lastHeardMs" wrap and drop the link).
   nanoReceiveTick();
+  usbPassthroughTick();
   uint32_t now = millis();
   linkTick(now);
   nanoSendTick(now);
