@@ -224,7 +224,7 @@ void levelStart() {
   if (reachMargin < REACH_MARGIN_START) { eventError(ERR_BASE_TILT); return; }
 
   actuatorsStop();
-  filterSeeded = false;
+  filterSeeded = false;          // restart the angle from the accelerometer (platform is still now)
   stableTicks  = 0;
   staleTicks   = 0;
   baseTicks    = 0;
@@ -395,7 +395,8 @@ static void driveBoth(float u1, float u2) {
 }
 
 // ------------------------------------------------------------ control tick
-// Runs every LEVEL_PERIOD_MS while leveling (or while the level debug stream is on).
+// Runs every LEVEL_PERIOD_MS all the time, so the angle estimate and the gyro
+// zero are always current; it only moves the actuators while leveling.
 void levelTick(uint32_t now, float dt) {
   int16_t s[6], a[3], g[3];
   mpuTop.getMotion6(&s[0], &s[1], &s[2], &s[3], &s[4], &s[5]);
@@ -406,13 +407,28 @@ void levelTick(uint32_t now, float dt) {
   gyroY = g[1];
   topAz = az;
 
-  // Gyro zero drifts (it was -4 deg/s on one axis when first measured):
-  // follow it whenever both actuators have been off for a moment.
-  uint32_t ms = millis();
-  if (act[0].dir == 0 && act[1].dir == 0 &&
-      ms - act[0].restAt > GYRO_REST_MS && ms - act[1].restAt > GYRO_REST_MS) {
-    gyroBiasX += GYRO_BIAS_RATE * (g[0] - gyroBiasX);
-    gyroBiasY += GYRO_BIAS_RATE * (g[1] - gyroBiasY);
+  // Gyro zero drifts (it was -4 deg/s on one axis when first measured, and it
+  // moves as the MPU warms up after power-on). Follow it only while the
+  // platform is truly still: actuators off AND the accelerometer angle steady
+  // for STILL_TICKS. Otherwise handling the frame (placing a block) would be
+  // learned as "zero" and send the angle estimate wandering.
+  {
+    static float   stillP = 0, stillR = 0;
+    static uint8_t stillTicks = 0;
+    float p = tiltDeg(ay), r = tiltDeg(ax);
+    if (fabs(p - stillP) < STILL_DEG && fabs(r - stillR) < STILL_DEG) {
+      if (stillTicks < 255) stillTicks++;
+    } else {
+      stillTicks = 0;
+      stillP = p;
+      stillR = r;
+    }
+    uint32_t ms = millis();
+    if (stillTicks >= STILL_TICKS && act[0].dir == 0 && act[1].dir == 0 &&
+        ms - act[0].restAt > GYRO_REST_MS && ms - act[1].restAt > GYRO_REST_MS) {
+      gyroBiasX += GYRO_BIAS_RATE * (g[0] - gyroBiasX);
+      gyroBiasY += GYRO_BIAS_RATE * (g[1] - gyroBiasY);
+    }
   }
   // Rotation about machine +X raises the 90 deg side (pitch up); rotation
   // about machine +Y lowers the 0 deg side (roll down).

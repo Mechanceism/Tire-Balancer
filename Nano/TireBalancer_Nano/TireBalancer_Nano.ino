@@ -99,7 +99,7 @@ void loop() {
   if (now - lastLevelTick >= LEVEL_PERIOD_MS) {
     float dt = (now - lastLevelTick) * 0.001f;
     lastLevelTick = now;
-    if (state == ST_LEVELING || state == ST_REACH || dbgLevel || dbgSensor) levelTick(now, constrain(dt, 0.01f, 0.1f));
+    levelTick(now, constrain(dt, 0.01f, 0.1f));   // always: keeps the angle and gyro zero current
   }
   jogTick(now);
 
