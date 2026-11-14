@@ -150,8 +150,14 @@ Checking a mounting with `SensorDebugOn` (`T:` = platform pitch,roll; `F:` =
 frame pitch,roll; `Z:` = platform, frame):
 
 1. `Z:++` - both read "up". A `-` means that MPU's X/Y pair is wrong.
-2. Lift the 90° side: pitch (first number of `T:`/`F:`) goes **up**.
-3. Lift the 0° side: roll (second number) goes **up**.
+2. Put a block under the frame at the **270° side** (the screen side, the
+   easiest place to lift). Pitch (first number of both `T:` and `F:`) must go
+   **down** by roughly the same amount, and roll (second number) barely change.
+   If an MPU's pitch goes up instead, or its roll changes rather than its
+   pitch, its X/Y pair is wrong.
+
+These two checks are enough: once machine Y (step 2) and machine Z (step 1)
+are right, machine X - and so roll - follows from them.
 
 After changing a mounting: re-check `PitchOffset`/`RollOffset` with a spirit
 level, run `FindReach` again, and (platform MPU) confirm leveling does not
