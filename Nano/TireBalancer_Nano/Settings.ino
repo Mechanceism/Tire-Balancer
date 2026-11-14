@@ -5,9 +5,12 @@
 
 void settingsDefaults() {
   cfg.magic       = SETTINGS_MAGIC;
-  cfg.cal[0]      = 200000;     // placeholder - run CalA / CalB / CalC once
-  cfg.cal[1]      = 200000;
-  cfg.cal[2]      = 200000;
+  // Load cells with arms fitted, calibrated 2026-11-13 with a 1.5 L bottle of
+  // mouthwash taken as 1.55 kg (liquid ~ water + ~50 g bottle) - not a precise
+  // reference mass: redo CalA / CalB / CalC with a weighed mass when available.
+  cfg.cal[0]      = 100129.3;
+  cfg.cal[1]      = 97834.2;
+  cfg.cal[2]      = 102888.3;
   cfg.pitchOffset = 1.52;       // set against a spirit level (2026-11-13)
   cfg.rollOffset  = -0.30;
   // Leveling, tuned on the machine with no tire (2026-11-13), gyro on:

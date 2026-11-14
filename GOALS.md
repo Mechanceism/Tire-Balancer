@@ -57,6 +57,14 @@ Motion and end-to-end tests (2026-11-13), boards linked through a PC relay:
 - [x] First full level: 5.1 deg -> under 0.2 deg in 4 s, LevelCompleted at
       8.9 s, 0.14-0.17 deg after stopping (default gains, no tire)
 
+Load cells (2026-11-13, arms fitted):
+
+- [x] Calibrated with a 1.5 L bottle (taken as 1.55 kg): A 100129, B 97834,
+      C 102888 counts/kg; each reads 1.55 back. Fitting the arms changed the
+      factors by 1.6-8% vs bare cells.
+- [ ] Re-check with a weighed reference mass (the bottle's mass is an estimate)
+- [ ] Small cross-talk seen: bottle on A showed ~22 g on C, on B ~7 g on C
+
 To do on the machine:
 
 - [ ] Look at the screen: results panel, units switches, corner status, pop-ups
