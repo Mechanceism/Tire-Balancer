@@ -59,6 +59,17 @@
 // prototypes above the first function, and they use this type.
 struct TireSize { float widthMm, sideMm, rimMm; };
 
+// A tire size format for the number pad: a list of parts; the separator after
+// each part is filled in automatically. autoLen: jump to the next part after
+// this many digits (0 = press Next).
+struct TireFmt {
+  uint8_t     n;
+  const char *ph[3];      // placeholder shown until the part is typed
+  const char *sep[3];     // text after each part
+  const char *hint[3];    // what the part is
+  uint8_t     autoLen[3];
+};
+
 // ------------------------------------------------------------ touch (CST816D, bit-banged over I2C)
 #define I2C_SDA 33
 #define I2C_SCL 32
@@ -106,10 +117,13 @@ uint32_t lastSliderSendMs = 0;
 
 lv_obj_t *statusLabel   = NULL;   // bottom-left corner, on every screen
 lv_obj_t *messageBox    = NULL;
-lv_obj_t *weightPosDd = NULL;    // Tire Info: Clip-on / Stick-on
-lv_obj_t *tireTa      = NULL;    // Tire Info: size text box
-lv_obj_t *tireResult  = NULL;    // Tire Info: what the size means
-lv_obj_t *tireKb      = NULL;    // on-screen keyboard
+lv_obj_t *weightPosSw  = NULL;   // Tire Info: Clip-on (off) / Stick-on (on)
+lv_obj_t *tireFmtDd    = NULL;   // Tire Info: size format
+lv_obj_t *tireSizeLbl  = NULL;   // Tire Info: the size entered (tap to edit)
+lv_obj_t *tireResult   = NULL;   // Tire Info: what the size means
+lv_obj_t *tirePad      = NULL;   // full-screen number pad
+lv_obj_t *tirePadHead  = NULL;   // number pad: template with the digits typed so far
+char      tireText[32] = "";     // the size as entered, e.g. "4.80-12"
 uint32_t  statusNoteUntil = 0;
 
 /*Don't forget to set Sketchbook location in File/Preferences to the path of your UI project (the parent foder of this INO file)*/
@@ -431,7 +445,7 @@ static bool parseTireSize(const char *in, TireSize &t) {
 
 // ---- things sent in more than one place
 static void sendTireInfo() {
-  bool  stickOn  = lv_dropdown_get_selected(weightPosDd) == 1;
+  bool  stickOn  = isChecked(weightPosSw);
   float offsetMm = stickOn ? STICK_ON_OFFSET_MM : CLIP_ON_OFFSET_MM;
 
   nanoSend("TreadW%.0f", tire.widthMm);
@@ -696,9 +710,8 @@ void LaserButton_event_handler(lv_event_t * e) {
 void TireInfoEnterButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
   TireSize t;
-  if (!parseTireSize(lv_textarea_get_text(tireTa), t)) {
-    showMessage("Tire size", "Size not recognised. Type it as printed on the tire, e.g.\n"
-                             "4.80-12   215/65R15   18x8.50-8");
+  if (!parseTireSize(tireText, t)) {
+    showMessage("Tire size", "Tap the size box and enter the tire size first.");
     return;
   }
   tire = t;
@@ -707,36 +720,105 @@ void TireInfoEnterButton_event_handler(lv_event_t * e) {
   statusNote("Tire info sent");
 }
 
-// Live readout of what the typed size means
+// ---- size formats for the number pad (TireFmt is defined near the top)
+static const TireFmt TIRE_FMTS[3] = {
+  {3, {"215", "65", "15"},    {"/", "R", ""}, {"width (mm)", "aspect ratio (%)", "rim diameter (in)"}, {3, 2, 0}},
+  {2, {"4.80", "12", ""},     {"-", "", ""},  {"width (in)", "rim diameter (in)", ""},                 {0, 0, 0}},
+  {3, {"31", "10.50", "15"},  {"x", "-", ""}, {"overall diameter (in)", "width (in)", "rim diameter (in)"}, {2, 0, 0}},
+};
+static char    padPart[3][7];   // digits typed per part
+static uint8_t padCur = 0;      // part being typed
+
+static const TireFmt &curFmt() { return TIRE_FMTS[lv_dropdown_get_selected(tireFmtDd)]; }
+
+// Number pad header: the template, typed parts in black, untyped in grey,
+// the current part in blue; the hint underneath.
+static void padRedraw(const char *note) {           // note: NULL = show the part's hint
+  const TireFmt &f = curFmt();
+  char b[160];
+  size_t n = 0;
+  for (uint8_t i = 0; i < f.n; i++) {
+    bool typed = padPart[i][0] != 0;
+    const char *col = (i == padCur) ? "2196f3" : (typed ? "000000" : "9e9e9e");
+    n += snprintf(b + n, sizeof(b) - n, "#%s %s#%s", col, typed ? padPart[i] : f.ph[i], f.sep[i]);
+  }
+  snprintf(b + n, sizeof(b) - n, "\n%s", note ? note : f.hint[padCur]);
+  lv_label_set_text(tirePadHead, b);
+}
+
+// Live readout of what the entered size means, and the size box text
 static void showTireResult() {
-  const char *txt = lv_textarea_get_text(tireTa);
   TireSize t;
   char b[96];
-  if (parseTireSize(txt, t)) {
+  if (tireText[0] && parseTireSize(tireText, t)) {
+    lv_label_set_text(tireSizeLbl, tireText);
     snprintf(b, sizeof(b), "Width %.0f mm, sidewall %.0f mm\nRim %.0f mm, tire %.0f mm across",
              t.widthMm, t.sideMm, t.rimMm, t.rimMm + 2 * t.sideMm);
+    lv_label_set_text(tireResult, b);
   } else {
-    snprintf(b, sizeof(b), "%s4.80-12   215/65R15   18x8.50-8", *txt ? "Not recognised. e.g.\n" : "e.g.\n");
-  }
-  lv_label_set_text(tireResult, b);
-}
-
-static void tireTa_event_cb(lv_event_t * e) {
-  lv_event_code_t code = lv_event_get_code(e);
-  if (code == LV_EVENT_CLICKED || code == LV_EVENT_FOCUSED) {
-    lv_keyboard_set_textarea(tireKb, tireTa);
-    lv_obj_clear_flag(tireKb, LV_OBJ_FLAG_HIDDEN);
-  } else if (code == LV_EVENT_VALUE_CHANGED) {
-    showTireResult();
+    const TireFmt &f = curFmt();
+    char ex[24] = "";
+    for (uint8_t i = 0; i < f.n; i++) { strcat(ex, f.ph[i]); strcat(ex, f.sep[i]); }
+    snprintf(b, sizeof(b), "#9e9e9e %s#", ex);
+    lv_label_set_text(tireSizeLbl, b);
+    lv_label_set_text(tireResult, "Tap the size box to enter the size.");
   }
 }
 
-static void tireKb_event_cb(lv_event_t * e) {
-  lv_event_code_t code = lv_event_get_code(e);
-  if (code == LV_EVENT_READY || code == LV_EVENT_CANCEL) {
-    lv_obj_add_flag(tireKb, LV_OBJ_FLAG_HIDDEN);
-    showTireResult();
+static void padOpen() {
+  memset(padPart, 0, sizeof(padPart));
+  padCur = 0;
+  padRedraw(NULL);
+  lv_obj_clear_flag(tirePad, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void padKey_event_cb(lv_event_t * e) {
+  lv_obj_t *m = lv_event_get_target(e);
+  const char *k = lv_btnmatrix_get_btn_text(m, lv_btnmatrix_get_selected_btn(m));
+  if (!k) return;
+  const TireFmt &f = curFmt();
+  char *part = padPart[padCur];
+  size_t len = strlen(part);
+
+  if (!strcmp(k, "Cancel")) {
+    lv_obj_add_flag(tirePad, LV_OBJ_FLAG_HIDDEN);
+    return;
   }
+  if (!strcmp(k, LV_SYMBOL_BACKSPACE)) {
+    if (len) part[len - 1] = 0;
+    else if (padCur > 0) padCur--;
+  } else if (!strcmp(k, "Next")) {
+    if (len && padCur + 1 < f.n) padCur++;
+  } else if (!strcmp(k, "Done")) {
+    char s[32] = "";
+    for (uint8_t i = 0; i < f.n; i++) {
+      if (!padPart[i][0]) { padCur = i; padRedraw("Fill in every part first"); return; }
+      strcat(s, padPart[i]);
+      strcat(s, f.sep[i]);
+    }
+    TireSize t;
+    if (!parseTireSize(s, t)) { padRedraw("That size is out of range"); return; }
+    strcpy(tireText, s);
+    lv_obj_add_flag(tirePad, LV_OBJ_FLAG_HIDDEN);
+    showTireResult();
+    return;
+  } else {                                        // a digit or '.'
+    bool dot = k[0] == '.';
+    if ((dot && strchr(part, '.')) || len >= sizeof(padPart[0]) - 1) return;
+    part[len] = k[0];
+    part[len + 1] = 0;
+    if (!dot && f.autoLen[padCur] && strlen(part) >= f.autoLen[padCur] && padCur + 1 < f.n) padCur++;
+  }
+  padRedraw(NULL);
+}
+
+static void tireSize_event_cb(lv_event_t * e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) padOpen();
+}
+
+static void tireFmt_event_cb(lv_event_t * e) {
+  tireText[0] = 0;                                // a different format: start again
+  showTireResult();
 }
 void SpeedEnterButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
@@ -799,40 +881,74 @@ static void setupExtraWidgets() {
                                 ui_TreadWidthLabel, ui_AspectRatioLabel, ui_RimDiameterLabel};
   for (lv_obj_t *o : oldTireWidgets) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
 
-  lv_obj_t *title = lv_label_create(ui_Tire_Info_Tab);
-  lv_label_set_text(title, "Tire size, as printed:");
-  lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
+  // Row 1: format
+  lv_obj_t *fl = lv_label_create(ui_Tire_Info_Tab);
+  lv_label_set_text(fl, "Format:");
+  lv_obj_align(fl, LV_ALIGN_TOP_LEFT, 0, 10);
+  tireFmtDd = lv_dropdown_create(ui_Tire_Info_Tab);
+  lv_dropdown_set_options(tireFmtDd, "Metric 215/65R15\nInch 4.80-12\nFlotation 31x10.50-15");
+  lv_obj_set_width(tireFmtDd, 190);
+  lv_obj_align(tireFmtDd, LV_ALIGN_TOP_LEFT, 60, 0);
+  lv_obj_add_event_cb(tireFmtDd, tireFmt_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
-  tireTa = lv_textarea_create(ui_Tire_Info_Tab);
-  lv_textarea_set_one_line(tireTa, true);
-  lv_textarea_set_max_length(tireTa, 24);
-  lv_textarea_set_placeholder_text(tireTa, "4.80-12");
-  lv_obj_set_width(tireTa, 170);
-  lv_obj_align(tireTa, LV_ALIGN_TOP_LEFT, 0, 20);
-  lv_obj_add_event_cb(tireTa, tireTa_event_cb, LV_EVENT_ALL, NULL);
+  // Row 2: the size - a big button that opens the number pad
+  lv_obj_t *sl = lv_label_create(ui_Tire_Info_Tab);
+  lv_label_set_text(sl, "Size:");
+  lv_obj_align(sl, LV_ALIGN_TOP_LEFT, 0, 58);
+  lv_obj_t *sizeBtn = lv_btn_create(ui_Tire_Info_Tab);
+  lv_obj_set_size(sizeBtn, 150, 44);
+  lv_obj_align(sizeBtn, LV_ALIGN_TOP_LEFT, 60, 46);
+  lv_obj_set_style_bg_color(sizeBtn, lv_color_white(), 0);
+  lv_obj_set_style_border_width(sizeBtn, 2, 0);
+  lv_obj_set_style_border_color(sizeBtn, lv_palette_main(LV_PALETTE_BLUE), 0);
+  lv_obj_add_event_cb(sizeBtn, tireSize_event_cb, LV_EVENT_CLICKED, NULL);
+  tireSizeLbl = lv_label_create(sizeBtn);
+  lv_label_set_recolor(tireSizeLbl, true);
+  lv_obj_set_style_text_color(tireSizeLbl, lv_color_black(), 0);
+  lv_obj_center(tireSizeLbl);
 
+  lv_obj_set_size(ui_TireInfoEnterButton, 80, 44);
+  lv_obj_align(ui_TireInfoEnterButton, LV_ALIGN_TOP_RIGHT, 0, 46);
+
+  // Row 3: what the size means
   tireResult = lv_label_create(ui_Tire_Info_Tab);
-  lv_obj_align(tireResult, LV_ALIGN_TOP_LEFT, 0, 62);
+  lv_obj_align(tireResult, LV_ALIGN_TOP_LEFT, 0, 98);
 
-  lv_obj_t *wl = lv_label_create(ui_Tire_Info_Tab);
-  lv_label_set_text(wl, "Weight:");
-  lv_obj_align(wl, LV_ALIGN_TOP_LEFT, 0, 112);
-  weightPosDd = lv_dropdown_create(ui_Tire_Info_Tab);
-  lv_dropdown_set_options(weightPosDd, "Clip-on\nStick-on");
-  lv_obj_set_width(weightPosDd, 110);
-  lv_obj_align(weightPosDd, LV_ALIGN_TOP_LEFT, 60, 102);
-  lv_obj_add_event_cb(weightPosDd, WeightPos_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+  // Row 4: Clip-on [switch] Stick-on
+  lv_obj_t *cl = lv_label_create(ui_Tire_Info_Tab);
+  lv_label_set_text(cl, "Clip-on");
+  lv_obj_align(cl, LV_ALIGN_TOP_LEFT, 0, 146);
+  weightPosSw = lv_switch_create(ui_Tire_Info_Tab);
+  lv_obj_set_size(weightPosSw, 60, 30);
+  lv_obj_align(weightPosSw, LV_ALIGN_TOP_LEFT, 66, 140);
+  lv_obj_add_event_cb(weightPosSw, WeightPos_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+  lv_obj_t *stl = lv_label_create(ui_Tire_Info_Tab);
+  lv_label_set_text(stl, "Stick-on");
+  lv_obj_align(stl, LV_ALIGN_TOP_LEFT, 136, 146);
 
-  lv_obj_set_size(ui_TireInfoEnterButton, 90, 50);
-  lv_obj_align(ui_TireInfoEnterButton, LV_ALIGN_TOP_RIGHT, 0, 20);
-
-  // On-screen keyboard (starts on numbers and symbols; "ABC" for letters)
-  tireKb = lv_keyboard_create(lv_layer_top());
-  lv_obj_set_size(tireKb, LV_PCT(100), LV_PCT(55));
-  lv_obj_align(tireKb, LV_ALIGN_BOTTOM_MID, 0, 0);
-  lv_keyboard_set_mode(tireKb, LV_KEYBOARD_MODE_SPECIAL);
-  lv_obj_add_flag(tireKb, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_add_event_cb(tireKb, tireKb_event_cb, LV_EVENT_ALL, NULL);
+  // Full-screen number pad, on top of everything, hidden until the size is tapped
+  static const char *padMap[] = {"1", "2", "3", LV_SYMBOL_BACKSPACE, "\n",
+                                 "4", "5", "6", "Next", "\n",
+                                 "7", "8", "9", "Cancel", "\n",
+                                 ".", "0", "Done", ""};
+  tirePad = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(tirePad, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_style_pad_all(tirePad, 4, 0);
+  lv_obj_set_style_radius(tirePad, 0, 0);
+  lv_obj_clear_flag(tirePad, LV_OBJ_FLAG_SCROLLABLE);
+  tirePadHead = lv_label_create(tirePad);
+  lv_label_set_recolor(tirePadHead, true);
+  lv_obj_set_style_text_align(tirePadHead, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_width(tirePadHead, LV_PCT(100));
+  lv_obj_align(tirePadHead, LV_ALIGN_TOP_MID, 0, 0);
+  lv_obj_t *pad = lv_btnmatrix_create(tirePad);
+  lv_btnmatrix_set_map(pad, padMap);
+  lv_btnmatrix_set_btn_width(pad, 14, 2);                 // "Done" is double width
+  lv_btnmatrix_set_btn_ctrl_all(pad, LV_BTNMATRIX_CTRL_NO_REPEAT);   // holding a key types it once
+  lv_obj_set_size(pad, LV_PCT(100), 190);
+  lv_obj_align(pad, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_add_event_cb(pad, padKey_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+  lv_obj_add_flag(tirePad, LV_OBJ_FLAG_HIDDEN);
   showTireResult();
 
   // Debug tab: the old "Speed Curve Exp." slider is now the leveling PID gain.
