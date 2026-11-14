@@ -94,8 +94,11 @@ Screen to Nano link (2026-11-14):
 
 ### Still to do on the machine
 
-- [ ] Confirm the gyro-zero fix (sensors always read, zero only learned when
-      still) cures the erratic leveling seen when started from the screen
+- [x] Hunting after a cold power-on fixed: the gyro zero taken at power-on
+      was ~10 deg/s out (MPU not settled). Now no zero is taken at power-on;
+      it is learned from a still second (gyro unused until then) and relearned
+      if the platform is still but the gyro still reads > 2 deg/s. Confirmed
+      by a cold power cycle: no hunting, levels fast.
 - [ ] Balance direction check with a known load on one arm (see Next up)
 - [ ] Load boost and tuning with a tire on (see Next up)
 - [ ] Re-check the load cells with a weighed reference mass
@@ -111,8 +114,9 @@ Screen to Nano link (2026-11-14):
 
 ## Ideas for later
 
-- Flash is at 91%: keep an eye on it (the load boost must fit). Candidates
-  to trim: the long Status printout, debug streams, or moving to the newer
-  Optiboot bootloader (+1.5 KB, needs an ISP programmer once)
+- Flash is at 93% (2026-11-14, after removing History/Diag/TareClear/
+  LoopRate). The load boost must fit. Further candidates: the long Status
+  printout, the TestMass feature, or the newer Optiboot bootloader (+1.5 KB,
+  needs an ISP programmer once)
 - Servo linearity table for the laser
 - Move the weight-position switch and the Kp slider into the SquareLine project

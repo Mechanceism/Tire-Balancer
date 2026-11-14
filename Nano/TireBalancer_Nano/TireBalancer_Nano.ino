@@ -74,7 +74,6 @@ float manualAngle = 0;
 bool dbgLevel    = false;
 bool dbgSensor   = false;
 bool dbgScale    = false;
-bool dbgLoopRate = false;
 
 // ------------------------------------------------------------ setup / loop
 void setup() {
@@ -120,7 +119,7 @@ void stopAll() {
 // Every debug line starts with '#', which the screen ignores. Lines are only
 // printed when they fit in the transmit buffer so they can never stall loop().
 void debugTick(uint32_t now) {
-  static uint32_t lastLevel = 0, lastScale = 0, lastRate = 0, lastSensor = 0;
+  static uint32_t lastLevel = 0, lastScale = 0, lastSensor = 0;
 
   // Raw sensors: platform accel angles, frame angles, platform gyro (counts).
   // Kept under 50 characters so it never waits for the transmit buffer.
@@ -134,17 +133,6 @@ void debugTick(uint32_t now) {
     Serial.print(',');        Serial.print(gyroY);
     Serial.print(F(" Z:"));   Serial.print(topAz > 0 ? '+' : '-');   // MPU face up (+) or down (-)
     Serial.println(baseAz > 0 ? '+' : '-');
-  }
-  static uint32_t loops = 0;
-  loops++;
-
-  if (dbgLoopRate && now - lastRate >= 1000) {
-    lastRate = now;
-    if (Serial.availableForWrite() > 24) {
-      Serial.print(F("# LoopRate "));
-      Serial.println(loops);
-    }
-    loops = 0;
   }
 
   if (dbgLevel && now - lastLevel >= 100 && Serial.availableForWrite() > 50) {

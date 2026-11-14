@@ -42,7 +42,6 @@ streams). The screen ignores them.
 | `Level` | Start leveling. Ends with `LevelCompleted` (Auto Stop on) or runs until cancelled (Auto Stop off). |
 | `LevelCancel` | Stop leveling. |
 | `Tare` | Zero the load cells (arms empty). Needed once after every power-up. Ends with `TareCompleted`. |
-| `TareClear` | Testing only: forget the zero point and use the raw readings as they are. |
 | `FindReach` | **Moves the platform to all four actuator end-stop combinations**, measures how far it can tilt relative to the frame, saves it, then levels. About 45 s. Redo after any change to the frame, actuators or MPU mounting. |
 | `Balance` | Weigh, calculate, switch the laser on. Ends with `BalanceCompleted ...`. |
 | `BalanceCancel` | Abort a Tare / Balance / Cal that is still measuring. |
@@ -65,7 +64,6 @@ streams). The screen ignores them.
 | `LevelDebugOn` / `LevelDebugOff` | off | `# P:.. R:.. B:.. A:..,.. X:.. M:..` 10x a second: pitch error, roll error, frame tilt, actuator PWM, samples skipped as jolts, degrees level is inside the reach area. |
 | `SensorDebugOn` / `SensorDebugOff` | off | `# T:p,r F:p,r G:x,y Z:tb` 10x a second: platform pitch,roll; frame pitch,roll; platform gyro (machine X,Y counts); `+`/`-` = each MPU's machine Z points up/down (should be `++`). |
 | `ScaleDebugOn` / `ScaleDebugOff` | off | `# W:a,b,c T:total Ang:.. M:..` 2x a second: live load cells and result. |
-| `LoopRateOn` / `LoopRateOff` | off | `# LoopRate n` once a second. |
 
 ### Values
 
@@ -141,7 +139,7 @@ the top of this page.
 | `MCon` / `MCoff` | `MassCompOn` / `MassCompOff` | Spelled out. |
 | `LDon` / `LDoff` | `LevelDebugOn` / `LevelDebugOff` | Spelled out. |
 | `BDon` / `BDoff` | `ScaleDebugOn` / `ScaleDebugOff` | It shows the load cells. |
-| `CPSon` / `CPSoff` | `LoopRateOn` / `LoopRateOff` | Spelled out. |
+| `CPSon` / `CPSoff` | (removed) | Loop rate was checked (~70,000/s) and the counter removed to save flash. |
 | `MLA<n>` | `LaserAngle<n>` | Spelled out. |
 | `SideWallRatio<n>` | `SideWall<n>` | Shorter; the screen already sent this. |
 | `outputExp<n>` | `Kp<n>` (+ `Ki`, `Kd`) | The cubic speed curve was replaced by a PID loop. |
