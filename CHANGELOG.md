@@ -1,5 +1,21 @@
 # Change Log
 
+## 2026-11-14 - link fixed, power and gyro zero
+
+- **Screen to Nano link fixed.** The screen's 4-pin RXD/TXD pins are shared
+  with its own USB-serial chip, which held RXD high: the screen never heard
+  the Nano (this was the long-standing "esp can't hear the nano" bug). The link
+  now uses IO22 (TX) and IO35 (RX) through the level converter, LV on 3.3 V.
+- Screen: USB log of every line sent/received (115200); only lines the Nano
+  sends count as "link up"; hearing its own Ping shows "RX hears own TX"
+  (what a converter with an unconnected LV pin does).
+- Nano: speed cap MaxSpeed 150 and a start-up Ramp (600 PWM/s) for the 45 W
+  supply; leveling got faster (1.3-1.5 s for 2-3 deg). "Enter Speed" on the
+  screen now saves.
+- Nano: the platform MPU is read all the time and the gyro zero is only
+  learned while the platform is truly still - suspected cause of erratic
+  leveling when started from the screen (to confirm).
+
 ## Nano V0.6.0 + Screen V0.3.0 - machine testing (2026-11-12 to 11-13)
 
 Both boards flashed and tested on the machine, each on its own USB port; the

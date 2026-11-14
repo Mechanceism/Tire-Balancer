@@ -28,10 +28,9 @@ where to put it.
 
 ## Next up
 
-1. **Connect the boards** through the level converter (docs/Wiring.md) and
-   test the real link. If the screen still cannot hear the Nano, use the
-   corner counters and the RX-pin test in docs/Wiring.md. So far the two
-   boards have only talked through a PC relay.
+1. **Test the whole machine from the screen** now the link works: power on
+   from cold, Level (with and without the block under the 270 deg side, to
+   check the gyro-zero fix for the erratic leveling), Tare, Balance.
 2. **Balance direction check** with the bottle on one arm: bottle on arm A
    (210 deg) should give a weight angle of about 30 deg, laser pointing there.
 3. **Load boost (to implement).** With a tire on, the actuators need more
@@ -84,9 +83,19 @@ Balance and laser (2026-11-13):
       as 1.55 kg: A 100129, B 97834, C 102888 counts/kg, each reads 1.55 back.
       Fitting the arms changed the factors by 1.6-8% vs bare cells.
 
+Screen to Nano link (2026-11-14):
+- [x] Fixed: the screen now uses IO22 (TX) and IO35 (RX) through the level
+      converter (LV on 3.3 V). The old RXD/TXD pins are shared with the
+      screen board's USB-serial chip, which held RXD high - the cause of the
+      "screen can't hear the Nano" bug since V0.4. Both directions confirmed
+      (settings burst echoed, Ping/Pong).
+- [x] 45 W supply: MaxSpeed capped at 150 with a start-up Ramp of 600 PWM/s
+      (2-3 deg corrections now 1.3-1.5 s)
+
 ### Still to do on the machine
 
-- [ ] Connect the boards through the level converter (see Next up)
+- [ ] Confirm the gyro-zero fix (sensors always read, zero only learned when
+      still) cures the erratic leveling seen when started from the screen
 - [ ] Balance direction check with a known load on one arm (see Next up)
 - [ ] Load boost and tuning with a tire on (see Next up)
 - [ ] Re-check the load cells with a weighed reference mass
