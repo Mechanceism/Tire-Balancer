@@ -23,13 +23,16 @@
 #define SCREEN_FW_VERSION "0.3.0"
 
 // ------------------------------------------------------------ Nano link
-// RX is on IO35, not the serial connector's RXD (GPIO 3): GPIO 3 is also
-// driven by the board's own USB-serial chip, which held it high so the Nano's
-// replies never arrived (rx:0). IO35 is input-only and driven by nothing else.
-// TX stays on the serial connector's TXD (GPIO 1).
+// The Nano link uses IO35 (RX) and IO22 (TX), NOT the 4-pin serial
+// connector's RXD/TXD (GPIO 3/1). Those are wired to the board's own
+// USB-serial chip, which held RXD high so the Nano's replies never arrived
+// (rx:0). Both ESP32 pins are 3.3 V logic: go through the level converter
+// with its LV pin on 3.3 V. The USB port (Serial, 115200) now prints a log
+// of every line sent ("> ") and received ("< ").
 #define NANO_BAUD    9600        // must match SERIAL_BAUD in the Nano's Config.h
 #define NANO_RX_PIN  35
-#define NANO_TX_PIN  1
+#define NANO_TX_PIN  22
+#define LOG_BAUD     115200      // USB log
 #define NanoSerial   Serial1
 
 #define PING_PERIOD_MS     2000     // how often to check the Nano is there
@@ -221,6 +224,7 @@ static void nanoWriteLine(const char *cmd) {
   uint8_t x = 0;
   for (const char *p = cmd; *p; p++) x ^= (uint8_t)*p;
   NanoSerial.printf("%s*%02X\n", cmd, x);
+  Serial.printf("> %s\n", cmd);                       // USB log: everything sent to the Nano
   lastSendMs = millis();
 }
 
@@ -383,6 +387,18 @@ static bool findValue(const char *line, const char *key, float &value) {
 }
 
 static void handleNanoLine(char *line) {
+  Serial.printf("< %s\n", line);                     // USB log: everything heard from the Nano
+
+  // Our own commands coming back means RX hears TX: on a level converter
+  // this happens when its LV pin is not on 3.3 V (the channels' pull-ups
+  // then tie them together). Never count that as the Nano.
+  if (!strncmp(line, "Ping", 4) || !strncmp(line, "Ack", 3)) {
+    rxBadLines++;
+    statusNote("RX hears own TX");
+    lv_obj_set_style_text_color(statusLabel, lv_palette_main(LV_PALETTE_RED), 0);
+    return;
+  }
+
   // Checksum: "*XX" at the end, XOR of everything before the '*'
   char *star = strrchr(line, '*');
   if (star) {
@@ -399,10 +415,20 @@ static void handleNanoLine(char *line) {
     return;
   }
 
+  // Only lines the Nano itself sends prove the link is up.
+  bool fromNano = line[0] == '#' || !strncmp(line, "Pong", 4) || !strncmp(line, "Ready", 5) ||
+                  !strncmp(line, "LevelCompleted", 14) || !strncmp(line, "TareCompleted", 13) ||
+                  !strncmp(line, "BalanceCompleted", 16) || !strncmp(line, "Err ", 4);
+  if (!fromNano) {
+    rxBadLines++;
+    return;
+  }
+
   lastHeardMs = millis();
   bool wasUp = linkUp;
   if (!linkUp) {
     linkUp = true;
+    Serial.println("! link up");
     showLinkState();
     syncNano();
   }
@@ -464,6 +490,7 @@ static void nanoReceiveTick() {
     if (b > 0x7E || (b < 0x20 && c != '\n' && c != '\r' && c != '\t')) {
       if (!quiet) {
         quiet = true;
+        Serial.printf("! non-text byte 0x%02X on RX - pausing sends\n", b);
         showLinkState();
       }
       quietUntil = millis() + QUIET_MS;
@@ -502,6 +529,7 @@ static void linkTick(uint32_t now) {
 
   if (linkUp && (int32_t)(now - lastHeardMs) > (int32_t)LINK_TIMEOUT_MS) {
     linkUp = false;
+    Serial.println("! link down");
     showLinkState();
   }
 
@@ -661,6 +689,8 @@ static void setupExtraWidgets() {
 
 void setup() {
   Wire.begin(I2C_SDA, I2C_SCL);
+  Serial.begin(LOG_BAUD);
+  Serial.println("\nTire balancer screen " SCREEN_FW_VERSION " - Nano link: RX IO35, TX IO22");
   NanoSerial.begin(NANO_BAUD, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
 
   lv_init();
