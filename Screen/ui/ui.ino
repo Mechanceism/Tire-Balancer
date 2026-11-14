@@ -575,7 +575,8 @@ void SpeedEnterButton_event_handler(lv_event_t * e) {
   nanoSend("MinSpeed%d", (int)lv_slider_get_value(ui_MinSpeedSlider));
   nanoSend("MaxSpeed%d", (int)lv_slider_get_value(ui_MaxSpeedSlider));
   nanoSend("Kp%d", (int)lv_slider_get_value(ui_SpeedCurveSlider));     // re-labelled "Level Gain Kp"
-  statusNote("Speeds sent");
+  nanoSend("Save");                                                     // keep them after a restart
+  statusNote("Speeds saved");
 }
 
 // Sliders that send while they move (throttled in linkTick)
@@ -645,8 +646,8 @@ static void setupExtraWidgets() {
   lv_label_set_text(ui_SpeedCurveValueLabel, "300");
   lv_slider_set_value(ui_MinSpeedSlider, 20, LV_ANIM_OFF);
   lv_label_set_text(ui_MinSpeedValueLabel, "20");
-  lv_slider_set_value(ui_MaxSpeedSlider, 255, LV_ANIM_OFF);
-  lv_label_set_text(ui_MaxSpeedValueLabel, "255");
+  lv_slider_set_value(ui_MaxSpeedSlider, 150, LV_ANIM_OFF);
+  lv_label_set_text(ui_MaxSpeedValueLabel, "150");
 
   // Debug tab: these trim the Nano's saved offsets by up to +-1.0 deg
   lv_label_set_text(ui_PitchOffsetSliderLabel, "Pitch Trim (deg tenths)");

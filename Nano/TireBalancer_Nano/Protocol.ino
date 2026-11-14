@@ -172,6 +172,7 @@ static bool runCommand(const char *key, bool hasVal, float v) {
   else if (IS("JogRight"))    { jogStart(1, v); }   // actuator 2, at 30 deg
   else if (IS("JogTime"))     { jogSetTime(v); }    // ms, default 1000
   else if (IS("Gyro"))        { cfg.gyroMix = constrain(v, 0.0f, 0.995f); }
+  else if (IS("Ramp"))        { cfg.ramp = constrain(v, 0.0f, 5000.0f); }   // PWM/s, 0 = instant
 
   // ---- MPU mounting: sensor axis along machine +X / +Y (1=X 2=Y 3=Z, - = reversed)
   // Takes effect at once; Save to keep. Level refuses while a pair is invalid.

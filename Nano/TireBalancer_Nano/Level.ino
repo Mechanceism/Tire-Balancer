@@ -17,11 +17,13 @@ struct Actuator {
   float    integ;      // integral of the error, deg*s
   float    prevErr;    // error on the previous tick, deg
   int16_t  out;        // last command, signed PWM (for the debug stream)
+  float    pwmNow;     // PWM actually applied, rising at cfg.ramp per second
+  uint32_t rampMs;     // millis() of the last ramp step
 };
 
 static Actuator act[2] = {
-  {PIN_ACT1_UP, PIN_ACT1_DOWN, 0, 0, false, 0, 0, 0, 0},
-  {PIN_ACT2_UP, PIN_ACT2_DOWN, 0, 0, false, 0, 0, 0, 0},
+  {PIN_ACT1_UP, PIN_ACT1_DOWN, 0, 0, false, 0, 0, 0, 0, 0, 0},
+  {PIN_ACT2_UP, PIN_ACT2_DOWN, 0, 0, false, 0, 0, 0, 0, 0, 0},
 };
 
 static bool     filterSeeded = false;
@@ -50,22 +52,38 @@ void actuatorsInit() {
 // cmd is signed PWM: > 0 up, < 0 down, 0 off.
 // Every change of direction (including starting from rest) first switches both
 // inputs off and waits DEAD_TIME_MS, so UP and DOWN can never overlap.
+// Speeding up is limited to cfg.ramp PWM per second (0 = no limit) so the
+// motors' start-up current cannot overload the power supply; slowing down
+// and stopping are immediate.
 void actuatorDrive(uint8_t i, int16_t cmd) {
   Actuator &a = act[i];
   int8_t  want = (cmd > 0) - (cmd < 0);
   uint8_t pwm  = (uint8_t)constrain(abs(cmd), 0, 255);
+  uint32_t now = millis();
   a.out = cmd;
 
   if (want != a.dir) {
     analogWrite(a.pinUp, 0);
     analogWrite(a.pinDown, 0);
-    if (a.dir != 0) a.restAt = millis();
-    a.dir = 0;
-    if (want == 0 || millis() - a.restAt < DEAD_TIME_MS) return;
-    a.dir = want;
+    if (a.dir != 0) a.restAt = now;
+    a.dir    = 0;
+    a.pwmNow = 0;
+    if (want == 0 || now - a.restAt < DEAD_TIME_MS) return;
+    a.dir    = want;
+    a.pwmNow = min((float)pwm, cfg.minSpeed);    // start at the lowest speed that moves
+    a.rampMs = now;
   }
-  if (a.dir > 0)      analogWrite(a.pinUp, pwm);
-  else if (a.dir < 0) analogWrite(a.pinDown, pwm);
+
+  if (cfg.ramp <= 0 || pwm <= a.pwmNow) {
+    a.pwmNow = pwm;
+  } else {
+    a.pwmNow = min((float)pwm, a.pwmNow + cfg.ramp * (now - a.rampMs) * 0.001f);
+  }
+  a.rampMs = now;
+
+  uint8_t applied = (uint8_t)a.pwmNow;
+  if (a.dir > 0)      analogWrite(a.pinUp, applied);
+  else if (a.dir < 0) analogWrite(a.pinDown, applied);
 }
 
 void actuatorsStop() {

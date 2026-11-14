@@ -114,7 +114,7 @@ enum : uint8_t {
 };
 
 // Everything in here survives power-off ("Save" command, EEPROM).
-#define SETTINGS_MAGIC 0x7B08
+#define SETTINGS_MAGIC 0x7B09
 struct Settings {
   uint16_t magic;
   float cal[3];        // load cell counts per kg (sign included) - set with CalA/CalB/CalC
@@ -133,4 +133,5 @@ struct Settings {
   float reach[4][2];   // reach area corners (c1, c2): LupRup, LupRdown, LdownRdown, LdownRup
   int8_t topAxis[2];   // platform MPU mounting: sensor axis along machine +X, +Y
   int8_t baseAxis[2];  // frame MPU mounting
+  float ramp;          // PWM per second the actuators may speed up by (0 = instant)
 };

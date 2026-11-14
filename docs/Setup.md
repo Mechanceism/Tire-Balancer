@@ -91,9 +91,12 @@ All of these can be typed while it is running. `Save` keeps them.
 | Twitches now and then while holding level | Raise `Alpha` (0.95) or `LevelTol`. |
 | Stops slightly off level every time | Adjust `PitchOffset` / `RollOffset` (measure with a level), then `Save`. |
 
-Tuned values (no tire, 2026-11-13): `MinSpeed20 MaxSpeed255 Kp300 Ki5 Kd10
-Gyro0.98 LevelTol0.1`. 2-3° corrections usually take 1.6-1.8 s (occasionally
-~2.3 s) and settle within 0.03-0.09°. About 0.35 s of that is mechanical slack
+Tuned values (no tire): `MinSpeed20 MaxSpeed150 Ramp600 Kp300 Ki5 Kd10
+Gyro0.98 LevelTol0.1`. With the 150 cap and the ramp (2026-11-14), 2-3°
+corrections take 1.3-1.5 s and settle within 0.05° - faster than the earlier
+uncapped 255 (1.6-1.8 s), because the gentler start avoids the jolt through
+the mechanical slack. The cap is there for the 45 W supply; "Enter Speed" on
+the screen now saves the speeds too. About 0.35 s of that is mechanical slack
 before the platform starts moving, plus 0.3 s of "is it still level" at the end.
 
 The gyro removes the lag of the angle filter, which is what allowed `Kp` 300

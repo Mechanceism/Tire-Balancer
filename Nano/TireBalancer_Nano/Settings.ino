@@ -16,7 +16,8 @@ void settingsDefaults() {
   // Leveling, tuned on the machine with no tire (2026-11-13), gyro on:
   // 2-3 deg steps finish in 1.6-1.8 s and settle within 0.03 deg.
   cfg.minSpeed    = 20;         // both actuators still move at PWM 20 unloaded; 15 was no better
-  cfg.maxSpeed    = 255;
+  cfg.maxSpeed    = 150;        // speed cap: 255 is too much for the 45 W supply (2026-11-14)
+  cfg.ramp        = 600;        // PWM/s: 0 -> 150 in ~0.2 s, softens the start-up current
   cfg.kp          = 300;        // 300 overshot without the gyro; fine with it
   cfg.ki          = 5;
   cfg.kd          = 10;         // brakes the approach; 20 was too much
@@ -63,7 +64,8 @@ void settingsPrint() {
   Serial.print(F(" Kd "));           Serial.println(cfg.kd);
   Serial.print(F("# Alpha "));       Serial.print(cfg.alpha);
   Serial.print(F(" LevelTol "));     Serial.println(cfg.levelTol);
-  Serial.print(F("# Gyro "));        Serial.println(cfg.gyroMix);
+  Serial.print(F("# Gyro "));        Serial.print(cfg.gyroMix);
+  Serial.print(F(" Ramp "));         Serial.println(cfg.ramp, 0);
   Serial.print(F("# Axes top "));    Serial.print(cfg.topAxis[0]);
   Serial.print(',');                 Serial.print(cfg.topAxis[1]);
   Serial.print(F(" base "));         Serial.print(cfg.baseAxis[0]);

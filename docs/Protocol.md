@@ -76,7 +76,8 @@ streams). The screen ignores them.
 | `SideWall<n>` | % | no | Aspect ratio. |
 | `WeightR<n>` | mm | no | Radius where the balance weight is placed. 0 or never sent = rim radius. |
 | `MinSpeed<n>` | PWM 0-255 | yes | Lowest PWM that still moves the actuators. |
-| `MaxSpeed<n>` | PWM 0-255 | yes | |
+| `MaxSpeed<n>` | PWM 0-255 | yes | Speed cap. 150 by default: 255 is too much for the 45 W supply. |
+| `Ramp<n>` | PWM per second | yes | How fast an actuator may speed up (0 = instantly). 600 by default; softens the start-up current. Slowing down is always immediate. |
 | `Kp<n>` | PWM per deg | yes | PID proportional gain. |
 | `Ki<n>` | PWM per deg·s | yes | PID integral gain. |
 | `Kd<n>` | PWM per deg/s | yes | PID derivative gain (0 = PI controller). |
