@@ -17,7 +17,7 @@ void settingsDefaults() {
   cfg.kd          = 0;
   cfg.alpha       = 0.90;
   cfg.levelTol    = 0.20;
-  cfg.laserOffset = 82;         // this servo's zero is 82 deg off
+  cfg.laserOffset = 79.5;       // this servo's zero is ~80 deg off (82 pointed 2-3 deg CCW, 2026-11-13)
   cfg.testMass    = 5;
 }
 

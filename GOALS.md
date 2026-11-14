@@ -50,10 +50,12 @@ Motion and end-to-end tests (2026-11-13), boards linked through a PC relay:
 
 - [x] Left actuator (1, D9/D10): moves both ways at PWM 100; direction and
       roll/pitch ratio match the mixing maths
-- [ ] **Right actuator (2, D5/D6): does not move at any PWM (100-255), either
-      direction** - hardware between the pins and the motor
+- [x] Right actuator (2, D5/D6): did not move until a driver DIP switch was
+      changed; now matches the left one (about 1.1 deg pitch per second at PWM 100)
 - [x] Balance -> screen -> Ack -> laser, angle and mass verified by hand
-- [ ] Look at where the laser pointed for 36.7 deg and the 0/90/180/270 sweep
+- [x] Laser sweep read 2-3 deg CCW; LaserOffset 82 -> 79.5 (saved)
+- [x] First full level: 5.1 deg -> under 0.2 deg in 4 s, LevelCompleted at
+      8.9 s, 0.14-0.17 deg after stopping (default gains, no tire)
 
 To do on the machine:
 
