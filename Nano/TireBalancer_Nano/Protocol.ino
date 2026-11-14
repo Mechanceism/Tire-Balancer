@@ -125,6 +125,7 @@ static bool runCommand(const char *key, bool hasVal, float v) {
   else if (IS("Level"))        { levelStart(); }
   else if (IS("LevelCancel"))  { levelCancel(); }
   else if (IS("Tare"))         { scaleJobStart(JOB_TARE, 0); }
+  else if (IS("TareClear"))    { scaleTareClear(); }                   // testing: raw readings, no zero
   else if (IS("Balance"))      { scaleJobStart(JOB_BALANCE, 0); }
   else if (IS("BalanceCancel")) { scaleJobCancel(); }
   else if (IS("CalA"))         { scaleJobStart(JOB_CAL_A, v); }      // CalA<kg on arm A>
@@ -158,6 +159,11 @@ static bool runCommand(const char *key, bool hasVal, float v) {
 
   // ---- everything below needs a number
   else if (!hasVal) return false;
+
+  // ---- commissioning: run one actuator for 1 s at a signed PWM
+  // (names have no digits: the parser reads digits as the value)
+  else if (IS("JogLeft"))     { jogStart(0, v); }   // actuator 1, at 150 deg
+  else if (IS("JogRight"))    { jogStart(1, v); }   // actuator 2, at 30 deg
 
   // ---- tire data (metric: mm and percent)
   else if (IS("RimD"))        { rimD = v * 0.001f; }

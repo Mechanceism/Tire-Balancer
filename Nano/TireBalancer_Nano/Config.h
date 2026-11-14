@@ -41,6 +41,7 @@ const uint8_t PIN_HX_SCK[3]  = {3, 8, 12};
 #define LEVEL_TIMEOUT_MS  120000UL  // give up (Auto Stop mode only)
 #define DEAD_TIME_MS      150       // both H-bridge inputs off this long before any restart
 #define MASS_COMP_FULL_KG 20.0f     // load at which Mass Comp doubles the drive
+#define JOG_MS            1000      // JogLeft / JogRight run one actuator this long
 
 // Actuator mixing. Platform top view, X to the right (0 deg), Y away from the
 // screen (90 deg). Fixed pivot at 270 deg, actuators at 150 and 30 deg.
@@ -73,7 +74,7 @@ const uint8_t PIN_HX_SCK[3]  = {3, 8, 12};
 #define EV_MAX_TRIES      5
 
 // ---------------------------------------------------------------- Types
-enum : uint8_t { ST_IDLE, ST_LEVELING, ST_SAMPLING };
+enum : uint8_t { ST_IDLE, ST_LEVELING, ST_SAMPLING, ST_JOG };
 
 enum : uint8_t { JOB_NONE, JOB_TARE, JOB_BALANCE, JOB_CAL_A, JOB_CAL_B, JOB_CAL_C };
 

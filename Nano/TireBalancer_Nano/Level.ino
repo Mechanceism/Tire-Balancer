@@ -141,9 +141,36 @@ static void levelAbort(uint8_t err) {
   eventError(err);
 }
 
+// ------------------------------------------------------------ jog (commissioning)
+// JogLeft<pwm> / JogRight<pwm>: run one actuator at a signed PWM for JOG_MS, then stop.
+// Used to find each actuator's direction and the lowest PWM that moves it.
+static uint8_t  jogAct;
+static int16_t  jogPwm;
+static uint32_t jogEnd;
+
+void jogStart(uint8_t i, float pwm) {
+  if (state != ST_IDLE) { eventError(ERR_BUSY); return; }
+  actuatorsStop();
+  jogAct = i;
+  jogPwm = (int16_t)constrain(pwm, -255, 255);
+  jogEnd = millis() + JOG_MS;
+  state  = ST_JOG;
+}
+
+void jogTick(uint32_t now) {
+  if (state != ST_JOG) return;
+  if ((int32_t)(now - jogEnd) >= 0) {
+    actuatorsStop();
+    state = ST_IDLE;
+    return;
+  }
+  actuatorDrive(jogAct, jogPwm);
+}
+
 // ------------------------------------------------------------ PID
-// Returns signed PWM for actuator i. e is the corner error in degrees.
-static int16_t pidStep(uint8_t i, float e, float dt, float gain) {
+// Returns the PID output for actuator i (0 while it is resting inside the band).
+// e is the corner error in degrees. The caller turns this into PWM.
+static float pidStep(uint8_t i, float e, float dt, float gain) {
   Actuator &a = act[i];
   float mag  = fabs(e);
   float band = cfg.levelTol * 0.5f;      // start moving outside this...
@@ -166,11 +193,27 @@ static int16_t pidStep(uint8_t i, float e, float dt, float gain) {
   a.prevErr = e;
   float u = (cfg.kp * e + cfg.ki * a.integ + cfg.kd * d) * gain;
 
-  // The actuators do not move below minSpeed, so the PID output rides on top of it.
+  if (fabs(u) < cfg.maxSpeed - cfg.minSpeed) a.integ += e * dt;   // anti-windup: no integrating while saturated
+  if (u == 0) u = (e > 0) ? 0.001f : -0.001f;                      // active means moving, even at minSpeed
+  return u;
+}
+
+// The actuators do not move below minSpeed, so the PID output rides on top of
+// it. If either output is past the limit both are scaled down together, so the
+// difference between them (the roll correction) is kept.
+static void driveBoth(float u1, float u2) {
   float span = cfg.maxSpeed - cfg.minSpeed;
-  if (fabs(u) < span) a.integ += e * dt;       // anti-windup: no integrating while saturated
-  float speed = constrain(cfg.minSpeed + fabs(u), cfg.minSpeed, cfg.maxSpeed);
-  return (u >= 0) ? (int16_t)speed : -(int16_t)speed;
+  float m = max(fabs(u1), fabs(u2));
+  if (m > span && m > 0) {
+    u1 *= span / m;
+    u2 *= span / m;
+  }
+  float u[2] = {u1, u2};
+  for (uint8_t i = 0; i < 2; i++) {
+    if (u[i] == 0) { actuatorDrive(i, 0); continue; }
+    int16_t speed = (int16_t)(cfg.minSpeed + fabs(u[i]));
+    actuatorDrive(i, u[i] > 0 ? speed : -speed);
+  }
 }
 
 // ------------------------------------------------------------ control tick
@@ -224,8 +267,7 @@ void levelTick(uint32_t now, float dt) {
     g2 = 1 + constrain(sqrt(weight[1] * weight[1] + weight[2] * weight[2]) / MASS_COMP_FULL_KG, 0, 1);
   }
 
-  actuatorDrive(0, pidStep(0, e1, dt, g1));
-  actuatorDrive(1, pidStep(1, e2, dt, g2));
+  driveBoth(pidStep(0, e1, dt, g1), pidStep(1, e2, dt, g2));
 
   // Both actuators resting inside their bands means pitch and roll are both
   // inside levelTol (see MIX_ROLL: |pitch| < tol/2, |roll| < 0.87 tol).

@@ -48,6 +48,13 @@ void scaleJobStart(uint8_t newJob, float massKg) {
   state       = ST_SAMPLING;
 }
 
+// Testing only: forget the zero point and use the raw readings as they are.
+void scaleTareClear() {
+  for (uint8_t i = 0; i < 3; i++) tareRaw[i] = 0;
+  tared = true;
+  updateWeights();
+}
+
 void scaleJobCancel() {
   job = JOB_NONE;
   if (state == ST_SAMPLING) state = ST_IDLE;

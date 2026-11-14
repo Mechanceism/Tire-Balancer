@@ -46,6 +46,15 @@ Bench-tested on the real boards (2026-11-12), each board on its own USB:
       ignores corrupted lines (tested by playing the Nano from the PC)
 - [x] Old firmware read back first (docs/firmware-backup) - includes V0.5
 
+Motion and end-to-end tests (2026-11-13), boards linked through a PC relay:
+
+- [x] Left actuator (1, D9/D10): moves both ways at PWM 100; direction and
+      roll/pitch ratio match the mixing maths
+- [ ] **Right actuator (2, D5/D6): does not move at any PWM (100-255), either
+      direction** - hardware between the pins and the motor
+- [x] Balance -> screen -> Ack -> laser, angle and mass verified by hand
+- [ ] Look at where the laser pointed for 36.7 deg and the 0/90/180/270 sweep
+
 To do on the machine:
 
 - [ ] Look at the screen: results panel, units switches, corner status, pop-ups

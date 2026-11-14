@@ -42,6 +42,7 @@ streams). The screen ignores them.
 | `Level` | Start leveling. Ends with `LevelCompleted` (Auto Stop on) or runs until cancelled (Auto Stop off). |
 | `LevelCancel` | Stop leveling. |
 | `Tare` | Zero the load cells (arms empty). Needed once after every power-up. Ends with `TareCompleted`. |
+| `TareClear` | Testing only: forget the zero point and use the raw readings as they are. |
 | `Balance` | Weigh, calculate, switch the laser on. Ends with `BalanceCompleted ...`. |
 | `BalanceCancel` | Abort a Tare / Balance / Cal that is still measuring. |
 | `Stop` | Stop everything (actuators and measuring). |
@@ -85,6 +86,10 @@ streams). The screen ignores them.
 | `LaserAngle<n>` | deg | no | Target in manual laser mode. |
 | `TestMass<n>` | kg | yes | Amount added per load cell while TestMass is on. |
 | `CalA<n>` / `CalB<n>` / `CalC<n>` | kg | automatically | Calibrate one load cell with a known mass on that arm. See [Setup.md](Setup.md). |
+| `JogLeft<n>` / `JogRight<n>` | signed PWM | no | Commissioning: run actuator 1 (left, 150°) or 2 (right, 30°) for 1 s, then stop. Positive = up. |
+
+Command names never contain digits: the parser reads the first digit as the
+start of the value (`Jog1100` would be `Jog` = 1100).
 
 ## Messages: Nano → screen
 

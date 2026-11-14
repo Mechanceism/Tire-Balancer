@@ -90,6 +90,7 @@ void loop() {
     lastLevelTick = now;
     if (state == ST_LEVELING || dbgLevel) levelTick(now, constrain(dt, 0.01f, 0.1f));
   }
+  jogTick(now);
 
   if (state == ST_SAMPLING || dbgScale || (state == ST_LEVELING && massComp)) scalePoll(now);
 
