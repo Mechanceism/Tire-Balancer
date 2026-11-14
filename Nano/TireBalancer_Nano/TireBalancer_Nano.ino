@@ -49,7 +49,14 @@ uint8_t hxReads[3] = {0, 0, 0}; // readings per load cell since the last scale d
 uint16_t rejectedSamples = 0;   // platform MPU samples skipped as not-tilt: jolts or bad reads (since power-up)
 float pitchF     = 0;           // filtered platform pitch, deg
 float rollF      = 0;           // filtered platform roll, deg
-float baseAngle  = 0;           // frame tilt, deg
+float baseAngle  = 0;           // frame tilt, deg (total)
+float basePitch  = 0;           // frame pitch / roll, deg
+float baseRoll   = 0;
+float reachMargin = 99;         // deg that level is inside the platform's reach on this frame
+float pitchRaw   = 0;           // platform angle from this tick's accelerometer reading, deg
+float rollRaw    = 0;
+int16_t gyroX    = 0;           // platform gyro, raw counts (131 per deg/s)
+int16_t gyroY    = 0;
 
 // Last balance result
 float resAngle   = 0;       // deg - where the weight goes
@@ -63,6 +70,7 @@ float manualAngle = 0;
 
 // Debug streams
 bool dbgLevel    = false;
+bool dbgSensor   = false;
 bool dbgScale    = false;
 bool dbgLoopRate = false;
 
@@ -89,7 +97,7 @@ void loop() {
   if (now - lastLevelTick >= LEVEL_PERIOD_MS) {
     float dt = (now - lastLevelTick) * 0.001f;
     lastLevelTick = now;
-    if (state == ST_LEVELING || dbgLevel) levelTick(now, constrain(dt, 0.01f, 0.1f));
+    if (state == ST_LEVELING || state == ST_REACH || dbgLevel || dbgSensor) levelTick(now, constrain(dt, 0.01f, 0.1f));
   }
   jogTick(now);
 
@@ -110,7 +118,19 @@ void stopAll() {
 // Every debug line starts with '#', which the screen ignores. Lines are only
 // printed when they fit in the transmit buffer so they can never stall loop().
 void debugTick(uint32_t now) {
-  static uint32_t lastLevel = 0, lastScale = 0, lastRate = 0;
+  static uint32_t lastLevel = 0, lastScale = 0, lastRate = 0, lastSensor = 0;
+
+  // Raw sensors: platform accel angles, frame angles, platform gyro (counts).
+  // Kept under 50 characters so it never waits for the transmit buffer.
+  if (dbgSensor && now - lastSensor >= 100 && Serial.availableForWrite() > 50) {
+    lastSensor = now;
+    Serial.print(F("# T:"));  Serial.print(pitchRaw);
+    Serial.print(',');        Serial.print(rollRaw);
+    Serial.print(F(" F:"));   Serial.print(basePitch, 1);
+    Serial.print(',');        Serial.print(baseRoll, 1);
+    Serial.print(F(" G:"));   Serial.print(gyroX);
+    Serial.print(',');        Serial.println(gyroY);
+  }
   static uint32_t loops = 0;
   loops++;
 
@@ -130,7 +150,8 @@ void debugTick(uint32_t now) {
     Serial.print(F(" B:"));   Serial.print(baseAngle, 1);
     Serial.print(F(" A:"));   Serial.print(actuatorOutput(0));
     Serial.print(',');        Serial.print(actuatorOutput(1));
-    Serial.print(F(" X:"));   Serial.println(rejectedSamples);     // samples skipped (jolts / bad reads)
+    Serial.print(F(" X:"));   Serial.print(rejectedSamples);       // samples skipped (jolts / bad reads)
+    Serial.print(F(" M:"));   Serial.println(reachMargin, 1);      // deg level is inside the reach area
   }
 
   if (dbgScale && now - lastScale >= 500 && Serial.availableForWrite() > 60) {

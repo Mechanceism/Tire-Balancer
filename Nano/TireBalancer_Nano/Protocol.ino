@@ -78,6 +78,7 @@ static void eventSend() {
         case ERR_NO_LOAD:       out.print(F("NoLoad"));       break;
         case ERR_NO_TARE:       out.print(F("NoTare"));       break;
         case ERR_CAL:           out.print(F("Cal"));          break;
+        case ERR_REACH:         out.print(F("Reach"));        break;
       }
       break;
   }
@@ -124,6 +125,7 @@ static bool runCommand(const char *key, bool hasVal, float v) {
   // ---- actions
   if (IS("Stop"))            { stopAll(); }
   else if (IS("Level"))        { levelStart(); }
+  else if (IS("FindReach"))    { reachStart(); }     // measure the end stops (moves to all 4!)
   else if (IS("LevelCancel"))  { levelCancel(); }
   else if (IS("Tare"))         { scaleJobStart(JOB_TARE, 0); }
   else if (IS("TareClear"))    { scaleTareClear(); }                   // testing: raw readings, no zero
@@ -153,6 +155,8 @@ static bool runCommand(const char *key, bool hasVal, float v) {
   else if (IS("TestMassOff"))    { testMassOn = false; }
   else if (IS("LevelDebugOn"))   { dbgLevel = true; }
   else if (IS("LevelDebugOff"))  { dbgLevel = false; }
+  else if (IS("SensorDebugOn"))  { dbgSensor = true; }
+  else if (IS("SensorDebugOff")) { dbgSensor = false; }
   else if (IS("ScaleDebugOn"))   { dbgScale = true; }
   else if (IS("ScaleDebugOff"))  { dbgScale = false; }
   else if (IS("LoopRateOn"))     { dbgLoopRate = true; }
@@ -165,6 +169,8 @@ static bool runCommand(const char *key, bool hasVal, float v) {
   // (names have no digits: the parser reads digits as the value)
   else if (IS("JogLeft"))     { jogStart(0, v); }   // actuator 1, at 150 deg
   else if (IS("JogRight"))    { jogStart(1, v); }   // actuator 2, at 30 deg
+  else if (IS("JogTime"))     { jogSetTime(v); }    // ms, default 1000
+  else if (IS("Gyro"))        { cfg.gyroMix = constrain(v, 0.0f, 0.995f); }
 
   // ---- tire data (metric: mm and percent)
   else if (IS("RimD"))        { rimD = v * 0.001f; }
@@ -193,6 +199,28 @@ static bool runCommand(const char *key, bool hasVal, float v) {
   return true;
 }
 
+// Small replacements for atof / strtol: the commands only ever carry plain
+// decimal numbers and two hex digits, and the library versions cost ~1.2 KB.
+static float parseNum(const char *p) {
+  bool neg = (*p == '-');
+  if (neg) p++;
+  float v = 0, scale = 0;
+  for (; *p; p++) {
+    if (*p == '.') { scale = 1; continue; }
+    v = v * 10 + (*p - '0');
+    if (scale) scale *= 10;
+  }
+  if (scale) v /= scale;
+  return neg ? -v : v;
+}
+
+static int8_t hexDigit(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  c |= 0x20;                                   // lower case
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  return -1;
+}
+
 // One token: letters, optionally followed by a number ("Kp35.5").
 static void handleToken(char *tok) {
   char *p = tok;
@@ -203,7 +231,7 @@ static void handleToken(char *tok) {
   }
   if (p == tok) { reject(tok); return; }
 
-  float v = hasVal ? atof(p) : 0;
+  float v = hasVal ? parseNum(p) : 0;
   char key[16];
   uint8_t n = min((int)(p - tok), 15);
   memcpy(key, tok, n);
@@ -216,7 +244,8 @@ static void handleLine(char *line) {
   if (star) {
     uint8_t x = 0;
     for (char *q = line; q < star; q++) x ^= (uint8_t)*q;
-    if (strlen(star + 1) != 2 || (uint8_t)strtol(star + 1, NULL, 16) != x) {
+    int8_t hi = hexDigit(star[1]), lo = hexDigit(star[2]);
+    if (strlen(star + 1) != 2 || hi < 0 || lo < 0 || (uint8_t)((hi << 4) | lo) != x) {
       reject("checksum");
       return;
     }
@@ -239,7 +268,7 @@ void protocolPoll() {
       lineLen = 0;
       lineOverflow = false;
       lineNoise = false;
-    } else if ((uint8_t)c < 0x20 && c != '\t' || (uint8_t)c > 0x7E) {
+    } else if (((uint8_t)c < 0x20 && c != '\t') || (uint8_t)c > 0x7E) {
       // Not text: line noise, or the screen being programmed (its upload
       // traffic arrives here too). Drop the line without answering, so the
       // Nano never transmits into someone else's upload.

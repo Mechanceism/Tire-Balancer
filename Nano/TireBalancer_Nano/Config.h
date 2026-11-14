@@ -33,7 +33,23 @@ const uint8_t PIN_HX_SCK[3]  = {3, 8, 12};
 // ---------------------------------------------------------------- Leveling
 #define LEVEL_PERIOD_MS   20        // control loop period (50 Hz)
 #define ACCEL_COUNTS_1G   16384.0f  // MPU6050 at +-2 g
-#define MAX_BASE_ANGLE    13.0f     // deg - frame tilt the actuators cannot correct
+#define MAX_BASE_ANGLE    13.0f     // deg - frame tilt limit, only used if no reach area is stored
+
+// Reach area: where the platform can be relative to the frame, measured at the
+// four actuator end-stop combinations (FindReach). Stored as "corner" angles:
+//   c1 = pitch - MIX_ROLL*roll (left actuator)   c2 = pitch + MIX_ROLL*roll (right)
+// of the platform minus the same for the frame.
+#define REACH_MARGIN_START 1.0f     // deg - Level refuses unless level is this far inside
+#define REACH_MARGIN_RUN   0.3f     // deg - leveling stops if the frame moves level outside this
+#define REACH_PWM          200      // FindReach drive
+#define REACH_STALL_DEG    0.08f    // corner moving less than this in 1 s = at its end stop
+#define REACH_LEG_MS       40000UL  // give up on a leg after this long
+
+// Gyro (platform MPU, +-250 deg/s): pitch rate = +gyro Y, roll rate = -gyro X
+// (measured 2026-11-13). Zero offset is tracked while both actuators rest.
+#define GYRO_COUNTS_DPS   131.0f
+#define GYRO_BIAS_RATE    0.02f     // bias tracking per tick (about 1 s time constant)
+#define GYRO_REST_MS      500       // actuators off this long before tracking the bias
 #define BASE_CHECK_TICKS  25        // read the frame MPU every 25 ticks (0.5 s)
 #define ARM_TICKS         5         // error must stay outside the band this long before moving (0.1 s)
 #define STABLE_TICKS      15        // both actuators at rest this long = level (0.3 s)
@@ -76,7 +92,7 @@ const uint8_t PIN_HX_SCK[3]  = {3, 8, 12};
 #define EV_MAX_TRIES      5
 
 // ---------------------------------------------------------------- Types
-enum : uint8_t { ST_IDLE, ST_LEVELING, ST_SAMPLING, ST_JOG };
+enum : uint8_t { ST_IDLE, ST_LEVELING, ST_SAMPLING, ST_JOG, ST_REACH };
 
 enum : uint8_t { JOB_NONE, JOB_TARE, JOB_BALANCE, JOB_CAL_A, JOB_CAL_B, JOB_CAL_C };
 
@@ -84,11 +100,11 @@ enum : uint8_t { EV_NONE, EV_LEVEL_DONE, EV_TARE_DONE, EV_BALANCE_DONE, EV_ERROR
 
 enum : uint8_t {
   ERR_BUSY, ERR_BASE_TILT, ERR_MPU_TOP, ERR_MPU_BOTTOM, ERR_LEVEL_TIMEOUT,
-  ERR_SCALE, ERR_TIRE_DATA, ERR_NO_LOAD, ERR_NO_TARE, ERR_CAL
+  ERR_SCALE, ERR_TIRE_DATA, ERR_NO_LOAD, ERR_NO_TARE, ERR_CAL, ERR_REACH
 };
 
 // Everything in here survives power-off ("Save" command, EEPROM).
-#define SETTINGS_MAGIC 0x7B06
+#define SETTINGS_MAGIC 0x7B07
 struct Settings {
   uint16_t magic;
   float cal[3];        // load cell counts per kg (sign included) - set with CalA/CalB/CalC
@@ -103,4 +119,6 @@ struct Settings {
   float levelTol;      // deg - "level" means pitch and roll are both inside this
   float laserOffset;   // deg - servo zero vs. platform zero
   float testMass;      // kg added to every load cell while TestMass is on
+  float gyroMix;       // 0 = accelerometer only, 0.9-0.98 = trust the gyro for fast changes
+  float reach[4][2];   // reach area corners (c1, c2): LupRup, LupRdown, LdownRdown, LdownRup
 };

@@ -356,7 +356,8 @@ static void syncNano() {
 // ============================================================ receiving from the Nano
 static const char *errorText(const char *code) {
   if (!strcasecmp(code, "Busy"))         return "The Nano is busy with something else.";
-  if (!strcasecmp(code, "BaseTilt"))     return "The frame is tilted too far to level. Move it to flatter ground.";
+  if (!strcasecmp(code, "BaseTilt"))     return "The frame is tilted too far: the platform cannot reach level. Move it to flatter ground.";
+  if (!strcasecmp(code, "Reach"))        return "Measuring the platform's range of motion failed.";
   if (!strcasecmp(code, "MPUTop"))       return "Platform angle sensor is not responding.";
   if (!strcasecmp(code, "MPUBottom"))    return "Frame angle sensor is not responding.";
   if (!strcasecmp(code, "LevelTimeout")) return "Leveling took too long and was stopped.";
@@ -639,8 +640,8 @@ static void setupExtraWidgets() {
   // pressing "Enter Speed" without moving them changes nothing.
   lv_label_set_text(ui_SpeedCurveSliderLabel, "Level Gain Kp");
   lv_slider_set_range(ui_SpeedCurveSlider, 10, 400);
-  lv_slider_set_value(ui_SpeedCurveSlider, 200, LV_ANIM_OFF);
-  lv_label_set_text(ui_SpeedCurveValueLabel, "200");
+  lv_slider_set_value(ui_SpeedCurveSlider, 300, LV_ANIM_OFF);
+  lv_label_set_text(ui_SpeedCurveValueLabel, "300");
   lv_slider_set_value(ui_MinSpeedSlider, 20, LV_ANIM_OFF);
   lv_label_set_text(ui_MinSpeedValueLabel, "20");
   lv_slider_set_value(ui_MaxSpeedSlider, 255, LV_ANIM_OFF);

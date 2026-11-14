@@ -25,6 +25,8 @@ static Actuator act[2] = {
 };
 
 static bool     filterSeeded = false;
+static float    gyroBiasX    = 0;      // gyro zero, raw counts
+static float    gyroBiasY    = 0;
 static uint8_t  spikeRun     = 0;
 static uint8_t  stableTicks  = 0;
 static uint8_t  staleTicks   = 0;
@@ -91,6 +93,18 @@ void levelInit() {
   mpuBottom.setXAccelOffset(-414);
   mpuBottom.setYAccelOffset(429);
   mpuBottom.setZAccelOffset(4791);
+
+  // Starting gyro zero (the platform is still at power-up); tracked from then on.
+  long sx = 0, sy = 0;
+  for (uint8_t i = 0; i < 32; i++) {
+    int16_t x, y, z;
+    mpuTop.getRotation(&x, &y, &z);
+    sx += x;
+    sy += y;
+    delay(3);
+  }
+  gyroBiasX = sx / 32.0f;
+  gyroBiasY = sy / 32.0f;
 }
 
 static bool mpuPresent(uint8_t addr) {
@@ -104,11 +118,43 @@ static float tiltDeg(int16_t counts) {
   return atan(counts / ACCEL_COUNTS_1G) * RAD_TO_DEG;
 }
 
+// ------------------------------------------------------------ reach area
+// Is level (the target) inside the area the platform can reach on this frame?
+// Positive = inside by that many degrees, negative = outside.
+// Falls back to the plain frame-tilt limit if no area was ever measured.
+static float reachMarginFor(float x, float y) {
+  float area = 0;
+  for (uint8_t i = 0; i < 4; i++) {
+    uint8_t j = (i + 1) & 3;
+    area += cfg.reach[i][0] * cfg.reach[j][1] - cfg.reach[j][0] * cfg.reach[i][1];
+  }
+  if (fabs(area) < 2.0f) return MAX_BASE_ANGLE - baseAngle;   // never measured
+  float s = (area > 0) ? 1.0f : -1.0f;              // works for either corner order
+  float m = 1e6;
+  for (uint8_t i = 0; i < 4; i++) {
+    uint8_t j = (i + 1) & 3;
+    float ex = cfg.reach[j][0] - cfg.reach[i][0];
+    float ey = cfg.reach[j][1] - cfg.reach[i][1];
+    float len = sqrt(ex * ex + ey * ey);
+    if (len < 0.01f) continue;
+    float d = s * (ex * (y - cfg.reach[i][1]) - ey * (x - cfg.reach[i][0])) / len;
+    if (d < m) m = d;
+  }
+  return m;
+}
+
 static void readBase() {
   int16_t ax, ay, az;
   mpuBottom.getAcceleration(&ax, &ay, &az);
-  float p = tiltDeg(ax), r = tiltDeg(ay);
-  baseAngle = sqrt(p * p + r * r);
+  basePitch = tiltDeg(ax);
+  baseRoll  = tiltDeg(ay);
+  baseAngle = sqrt(basePitch * basePitch + baseRoll * baseRoll);
+
+  // Where level is, in corner angles relative to the frame
+  float tp = cfg.pitchOffset + pitchTrim, tr = cfg.rollOffset + rollTrim;
+  float x  = (tp - MIX_ROLL * tr) - (basePitch - MIX_ROLL * baseRoll);
+  float y  = (tp + MIX_ROLL * tr) - (basePitch + MIX_ROLL * baseRoll);
+  reachMargin = reachMarginFor(x, y);
 }
 
 // ------------------------------------------------------------ start / stop
@@ -118,7 +164,7 @@ void levelStart() {
   if (!mpuPresent(MPU_TOP_ADDR))    { eventError(ERR_MPU_TOP);    return; }
   if (!mpuPresent(MPU_BOTTOM_ADDR)) { eventError(ERR_MPU_BOTTOM); return; }
   readBase();
-  if (baseAngle >= MAX_BASE_ANGLE)  { eventError(ERR_BASE_TILT);  return; }
+  if (reachMargin < REACH_MARGIN_START) { eventError(ERR_BASE_TILT); return; }
 
   actuatorsStop();
   filterSeeded = false;
@@ -142,30 +188,103 @@ static void levelAbort(uint8_t err) {
   eventError(err);
 }
 
+// ------------------------------------------------------------ FindReach
+// Drives the platform to the four actuator end-stop combinations, records the
+// platform-to-frame corner angles at each, saves them and then levels.
+// An actuator counts as at its end stop when its corner angle moves less than
+// REACH_STALL_DEG in 1 s (works with or without built-in limit switches).
+static const int8_t REACH_DIR[4][2] = {{1, 1}, {1, -1}, {-1, -1}, {-1, 1}};
+static uint8_t  reachLeg;
+static uint32_t reachLegStart, reachCheckAt;
+static float    reachRef[2];
+static bool     reachEnd[2];
+
+static void reachLegBegin(uint32_t now) {
+  reachLegStart = now;
+  reachCheckAt  = now + 1800;
+  reachEnd[0] = reachEnd[1] = false;
+  reachRef[0] = pitchF - MIX_ROLL * rollF;
+  reachRef[1] = pitchF + MIX_ROLL * rollF;
+}
+
+void reachStart() {
+  if (state != ST_IDLE) { eventError(ERR_BUSY); return; }
+  if (!mpuPresent(MPU_TOP_ADDR) || !mpuPresent(MPU_BOTTOM_ADDR)) { eventError(ERR_REACH); return; }
+  actuatorsStop();
+  reachLeg = 0;
+  reachLegBegin(millis());
+  state = ST_REACH;
+}
+
+static void reachTick(uint32_t now) {
+  float c[2] = {pitchF - MIX_ROLL * rollF, pitchF + MIX_ROLL * rollF};
+  for (uint8_t i = 0; i < 2; i++) actuatorDrive(i, reachEnd[i] ? 0 : REACH_DIR[reachLeg][i] * REACH_PWM);
+
+  if ((int32_t)(now - reachCheckAt) >= 0) {
+    for (uint8_t i = 0; i < 2; i++) {
+      if (!reachEnd[i] && fabs(c[i] - reachRef[i]) < REACH_STALL_DEG) reachEnd[i] = true;
+      reachRef[i] = c[i];
+    }
+    reachCheckAt = now + 1000;
+  }
+
+  if (reachEnd[0] && reachEnd[1]) {
+    readBase();
+    cfg.reach[reachLeg][0] = c[0] - (basePitch - MIX_ROLL * baseRoll);
+    cfg.reach[reachLeg][1] = c[1] - (basePitch + MIX_ROLL * baseRoll);
+    Serial.print(F("# Reach "));
+    Serial.print(cfg.reach[reachLeg][0], 2);
+    Serial.print(',');
+    Serial.println(cfg.reach[reachLeg][1], 2);
+    if (++reachLeg >= 4) {
+      actuatorsStop();
+      state = ST_IDLE;
+      settingsSave();
+      levelStart();               // back to level (raises LevelCompleted as usual)
+      return;
+    }
+    reachLegBegin(now);
+  } else if ((int32_t)(now - reachLegStart) > (int32_t)REACH_LEG_MS) {
+    levelAbort(ERR_REACH);
+  }
+}
+
 // ------------------------------------------------------------ jog (commissioning)
 // JogLeft<pwm> / JogRight<pwm>: run one actuator at a signed PWM for JOG_MS, then stop.
 // Used to find each actuator's direction and the lowest PWM that moves it.
-static uint8_t  jogAct;
-static int16_t  jogPwm;
-static uint32_t jogEnd;
+// Both actuators can jog at once (each has its own end time). JogTime<ms>
+// changes the length (not saved), e.g. to drive to an end stop.
+static int16_t  jogCmd[2] = {0, 0};
+static uint32_t jogEnd[2];
+static uint16_t jogMs = JOG_MS;
+
+void jogSetTime(float ms) {
+  jogMs = (uint16_t)constrain(ms, 100, 40000);
+}
 
 void jogStart(uint8_t i, float pwm) {
-  if (state != ST_IDLE) { eventError(ERR_BUSY); return; }
-  actuatorsStop();
-  jogAct = i;
-  jogPwm = (int16_t)constrain(pwm, -255, 255);
-  jogEnd = millis() + JOG_MS;
-  state  = ST_JOG;
+  if (state != ST_IDLE && state != ST_JOG) { eventError(ERR_BUSY); return; }
+  if (state == ST_IDLE) {
+    actuatorsStop();
+    jogCmd[0] = jogCmd[1] = 0;
+  }
+  jogCmd[i] = (int16_t)constrain(pwm, -255, 255);
+  jogEnd[i] = millis() + jogMs;
+  state = ST_JOG;
 }
 
 void jogTick(uint32_t now) {
   if (state != ST_JOG) return;
-  if ((int32_t)(now - jogEnd) >= 0) {
+  bool any = false;
+  for (uint8_t i = 0; i < 2; i++) {
+    if (jogCmd[i] != 0 && (int32_t)(now - jogEnd[i]) >= 0) jogCmd[i] = 0;
+    actuatorDrive(i, jogCmd[i]);
+    if (jogCmd[i] != 0) any = true;
+  }
+  if (!any) {
     actuatorsStop();
     state = ST_IDLE;
-    return;
   }
-  actuatorDrive(jogAct, jogPwm);
 }
 
 // ------------------------------------------------------------ PID
@@ -220,8 +339,22 @@ static void driveBoth(float u1, float u2) {
 // ------------------------------------------------------------ control tick
 // Runs every LEVEL_PERIOD_MS while leveling (or while the level debug stream is on).
 void levelTick(uint32_t now, float dt) {
-  int16_t ax, ay, az;
-  mpuTop.getAcceleration(&ax, &ay, &az);
+  int16_t ax, ay, az, gx, gy, gz;
+  mpuTop.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  gyroX = gx;
+  gyroY = gy;
+
+  // Gyro zero drifts (it was -4 deg/s on X when first measured): follow it
+  // whenever both actuators have been off for a moment.
+  uint32_t ms = millis();
+  if (act[0].dir == 0 && act[1].dir == 0 &&
+      ms - act[0].restAt > GYRO_REST_MS && ms - act[1].restAt > GYRO_REST_MS) {
+    gyroBiasX += GYRO_BIAS_RATE * (gx - gyroBiasX);
+    gyroBiasY += GYRO_BIAS_RATE * (gy - gyroBiasY);
+  }
+  float rateP =  (gy - gyroBiasY) / GYRO_COUNTS_DPS;     // deg/s
+  float rateR = -(gx - gyroBiasX) / GYRO_COUNTS_DPS;
+  bool  useGyro = cfg.gyroMix > 0;
 
   // A live accelerometer always has a little noise. Identical readings for
   // half a second mean the sensor or the I2C bus has stopped answering.
@@ -234,29 +367,48 @@ void levelTick(uint32_t now, float dt) {
 
   float pitch = tiltDeg(ax);
   float roll  = tiltDeg(ay);
+  pitchRaw = pitch;
+  rollRaw  = roll;
 
   // Skip samples that are not tilt. The accelerometer measures gravity PLUS the
   // platform's own acceleration: smooth actuator motion only adds ~0.02 g, but
   // a jolt (slack taken up on a hard reversal) can add a lot for a moment.
   // Skipped: an I2C read that timed out, a total far from 1 g (outside about
   // 0.71-1.22 g), or a jump bigger than the platform can tilt in one tick.
-  // The last good angle is held; five in a row (0.1 s) is accepted as real.
+  // Without the gyro the last good angle is held; with it the gyro carries the
+  // angle through. Five in a row (0.1 s) is accepted as real.
   bool bad = Wire.getWireTimeoutFlag();
   Wire.clearWireTimeoutFlag();
   float gSq = ((float)ax * ax + (float)ay * ay + (float)az * az) / (ACCEL_COUNTS_1G * ACCEL_COUNTS_1G);
   if (gSq < 0.5f || gSq > 1.5f) bad = true;
   if (filterSeeded && (fabs(pitch - pitchF) > SPIKE_DEG || fabs(roll - rollF) > SPIKE_DEG)) bad = true;
+  bool accelOk = true;
   if (bad) {
     if (rejectedSamples < 65535) rejectedSamples++;
-    if (++spikeRun < SPIKE_TICKS) return;      // keep the last good angle (and outputs) for this tick
-    filterSeeded = false;                      // persistent: accept it as the new position
+    if (++spikeRun < SPIKE_TICKS) {
+      if (!useGyro || !filterSeeded) return;   // hold the last angle (and outputs) for this tick
+      accelOk = false;                         // gyro only this tick
+    } else {
+      filterSeeded = false;                    // persistent: accept it as the new position
+      spikeRun = 0;
+    }
+  } else {
+    spikeRun = 0;
   }
-  spikeRun = 0;
 
   if (!filterSeeded) {
     pitchF = pitch;
     rollF  = roll;
     filterSeeded = true;
+  } else if (useGyro) {
+    // Complementary filter: the gyro follows fast motion with no lag, the
+    // accelerometer slowly pulls the result back to true gravity.
+    pitchF += rateP * dt;
+    rollF  += rateR * dt;
+    if (accelOk) {
+      pitchF = cfg.gyroMix * pitchF + (1 - cfg.gyroMix) * pitch;
+      rollF  = cfg.gyroMix * rollF  + (1 - cfg.gyroMix) * roll;
+    }
   } else {
     pitchF = cfg.alpha * pitchF + (1 - cfg.alpha) * pitch;
     rollF  = cfg.alpha * rollF  + (1 - cfg.alpha) * roll;
@@ -267,10 +419,11 @@ void levelTick(uint32_t now, float dt) {
     readBase();
   }
 
+  if (state == ST_REACH) { reachTick(now); return; }
   if (state != ST_LEVELING) return;    // debug stream only: measure, do not move
 
-  if (staleTicks >= STALE_TICKS)   { levelAbort(ERR_MPU_TOP);   return; }
-  if (baseAngle >= MAX_BASE_ANGLE) { levelAbort(ERR_BASE_TILT); return; }
+  if (staleTicks >= STALE_TICKS)        { levelAbort(ERR_MPU_TOP);   return; }
+  if (reachMargin < REACH_MARGIN_RUN)   { levelAbort(ERR_BASE_TILT); return; }   // frame moved: level out of reach
   if (autoStop && (int32_t)(now - levelStartMs) > (int32_t)LEVEL_TIMEOUT_MS) { levelAbort(ERR_LEVEL_TIMEOUT); return; }
 
   float ePitch = cfg.pitchOffset + pitchTrim - pitchF;

@@ -78,14 +78,26 @@ Leveling tuning (2026-11-13, no tire):
 - [x] MaxSpeed 255, Kp 200, Ki 5, Kd 10, Alpha 0.6, LevelTol 0.1:
       2-3 deg steps done in 1.7-1.9 s (was 2.7-6.4 s), settle within 0.07 deg
 - [x] Samples that are not tilt (jolts, bad I2C reads) are skipped
-- [ ] Re-tune with a tire on, after load cell calibration. The old code
-      boosted the actuators by tire weight; Mass Comp does that now (up to
-      2x drive at 20 kg) - check it is enough near the end of travel.
+- [ ] **Load boost (to implement):** with a tire on, the actuators need more
+      drive. The old code added a boost from the measured tire weight. Mass
+      Comp is a first version (scales drive up to 2x at 20 kg) but must be
+      checked once the load cells are calibrated: MinSpeed probably has to
+      rise with load too (PWM 20 moves an empty platform, maybe not a loaded
+      one), and the boost should help the final slow approach, not just top
+      speed. Then re-tune with a tire on.
+
+- [x] Reach area measured (FindReach): level must be inside it for the
+      frame's tilt. Allowed frame tilt depends on direction (about 7 deg in
+      some directions, over 20 in others), unlike the old single 13 deg.
+- [ ] Check the frame MPU is mounted the same way round as the platform's
+      (lift one side of the frame, see docs/Setup.md)
+- [x] Gyro back in (complementary filter 0.98). V0.4 had pitch/roll on the
+      wrong gyro axes and no zero correction (gyro X read -4 deg/s at rest).
+      With it, Kp 300: 1.6-1.8 s typical, overshoot ~0.02 deg.
 
 Ideas for later:
 
-- Fuse the gyro back in (complementary filter) so actuator jolts barely
-  move the angle estimate - V0.4 did this
+- Flash is at 87%: keep an eye on it (the load boost must fit)
 
 - Servo linearity table for the laser
 - Work out actuator length from the two MPUs to warn before end of stroke

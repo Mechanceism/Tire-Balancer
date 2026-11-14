@@ -91,10 +91,29 @@ All of these can be typed while it is running. `Save` keeps them.
 | Twitches now and then while holding level | Raise `Alpha` (0.95) or `LevelTol`. |
 | Stops slightly off level every time | Adjust `PitchOffset` / `RollOffset` (measure with a level), then `Save`. |
 
-Tuned values (no tire, 2026-11-13): `MinSpeed20 MaxSpeed255 Kp200 Ki5 Kd10
-Alpha0.6 LevelTol0.1`. 2-3° corrections take 1.7-1.9 s and settle within
-0.01-0.07°. About 0.35 s of that is mechanical slack before the platform starts
-moving, plus 0.3 s of "is it still level" at the end.
+Tuned values (no tire, 2026-11-13): `MinSpeed20 MaxSpeed255 Kp300 Ki5 Kd10
+Gyro0.98 LevelTol0.1`. 2-3° corrections usually take 1.6-1.8 s (occasionally
+~2.3 s) and settle within 0.03-0.09°. About 0.35 s of that is mechanical slack
+before the platform starts moving, plus 0.3 s of "is it still level" at the end.
+
+The gyro removes the lag of the angle filter, which is what allowed `Kp` 300
+without overshoot. Its axes (pitch = +gyro Y, roll = -gyro X) were measured on
+this machine; if the platform MPU is ever remounted, re-check them with
+`SensorDebugOn` and a jog, or set `Gyro0` to fall back to the accelerometer.
+
+## Reach area (frame tilt limit)
+
+The platform can only tilt so far relative to the frame. `FindReach` drives the
+actuators to all four end-stop combinations (about 45 s, keep clear) and saves
+the result. `Level` then refuses with `Err BaseTilt` if level is not at least
+1° inside that area for the frame's current tilt, and hunting (Auto Stop off)
+stops if the frame is moved out of range. `M:` in the level debug line shows
+the current margin.
+
+This assumes the frame MPU is mounted the same way round as the platform MPU.
+To check: with `SensorDebugOn`, lift the 0° side of the frame - `F:` roll (the
+second number) should go up, like the platform's. Lift the 90° side - `F:` pitch
+should go up.
 
 Commissioning helpers: `JogLeft<pwm>` / `JogRight<pwm>` run one actuator for
 1 s. With `LevelDebugOn` you can see which way, and how far, each one moves.

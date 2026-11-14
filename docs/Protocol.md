@@ -43,6 +43,7 @@ streams). The screen ignores them.
 | `LevelCancel` | Stop leveling. |
 | `Tare` | Zero the load cells (arms empty). Needed once after every power-up. Ends with `TareCompleted`. |
 | `TareClear` | Testing only: forget the zero point and use the raw readings as they are. |
+| `FindReach` | **Moves the platform to all four actuator end-stop combinations**, measures how far it can tilt relative to the frame, saves it, then levels. About 45 s. Redo after any change to the frame, actuators or MPU mounting. |
 | `Balance` | Weigh, calculate, switch the laser on. Ends with `BalanceCompleted ...`. |
 | `BalanceCancel` | Abort a Tare / Balance / Cal that is still measuring. |
 | `Stop` | Stop everything (actuators and measuring). |
@@ -61,7 +62,8 @@ streams). The screen ignores them.
 | `TestMassOn` / `TestMassOff` | off | Add `TestMass` kg to every load cell (bench testing). |
 | `LaserOn` / `LaserOff` / `LaserToggle` | off | Laser + servo pointing at the last balance result. |
 | `ManualLaserOn` / `ManualLaserOff` | off | Point at `LaserAngle` instead of the result. |
-| `LevelDebugOn` / `LevelDebugOff` | off | `# P:.. R:.. B:.. A:..,..` 5x a second: pitch error, roll error, frame tilt, actuator PWM. |
+| `LevelDebugOn` / `LevelDebugOff` | off | `# P:.. R:.. B:.. A:..,.. X:.. M:..` 10x a second: pitch error, roll error, frame tilt, actuator PWM, samples skipped as jolts, degrees level is inside the reach area. |
+| `SensorDebugOn` / `SensorDebugOff` | off | `# T:p,r F:p,r G:x,y` 10x a second: raw platform angles, frame angles, raw gyro counts. |
 | `ScaleDebugOn` / `ScaleDebugOff` | off | `# W:a,b,c T:total Ang:.. M:..` 2x a second: live load cells and result. |
 | `LoopRateOn` / `LoopRateOff` | off | `# LoopRate n` once a second. |
 
@@ -78,7 +80,8 @@ streams). The screen ignores them.
 | `Kp<n>` | PWM per deg | yes | PID proportional gain. |
 | `Ki<n>` | PWM per deg·s | yes | PID integral gain. |
 | `Kd<n>` | PWM per deg/s | yes | PID derivative gain (0 = PI controller). |
-| `Alpha<n>` | 0-0.99 | yes | Angle smoothing. Higher = smoother but slower. |
+| `Gyro<n>` | 0-0.995 | yes | Gyro blending (complementary filter). 0 = accelerometer only; 0.98 tuned. |
+| `Alpha<n>` | 0-0.99 | yes | Angle smoothing, only used with `Gyro0`. Higher = smoother but slower. |
 | `LevelTol<n>` | deg | yes | Pitch and roll must both be inside this to count as level. |
 | `PitchOffset<n>` / `RollOffset<n>` | deg | yes | Platform sensor reading when the platform is truly level. |
 | `PitchTrim<n>` / `RollTrim<n>` | deg | no | Fine adjustment from the screen sliders, added to the offset. |
@@ -86,7 +89,8 @@ streams). The screen ignores them.
 | `LaserAngle<n>` | deg | no | Target in manual laser mode. |
 | `TestMass<n>` | kg | yes | Amount added per load cell while TestMass is on. |
 | `CalA<n>` / `CalB<n>` / `CalC<n>` | kg | automatically | Calibrate one load cell with a known mass on that arm. See [Setup.md](Setup.md). |
-| `JogLeft<n>` / `JogRight<n>` | signed PWM | no | Commissioning: run actuator 1 (left, 150°) or 2 (right, 30°) for 1 s, then stop. Positive = up. |
+| `JogLeft<n>` / `JogRight<n>` | signed PWM | no | Commissioning: run actuator 1 (left, 150°) or 2 (right, 30°) for `JogTime`, then stop. Positive = up. Both can run at once. |
+| `JogTime<n>` | ms | no | Jog length, 100-40000 (default 1000). |
 
 Command names never contain digits: the parser reads the first digit as the
 start of the value (`Jog1100` would be `Jog` = 1100).
@@ -108,7 +112,8 @@ start of the value (`Jog1100` would be `Jog` = 1100).
 | Code | Meaning |
 |---|---|
 | `Busy` | A different job is still running. |
-| `BaseTilt` | The frame is tilted 13° or more; the actuators cannot reach level. |
+| `BaseTilt` | Level is outside (or within 1° of the edge of) the platform's reach area for the frame's current tilt. While hunting, sent if the frame moves level out of reach. Without a reach area: frame tilted 13° or more. |
+| `Reach` | `FindReach` failed (sensor missing, or an actuator never stopped within 40 s). |
 | `MPUTop` | Platform angle sensor missing or frozen. |
 | `MPUBottom` | Frame angle sensor missing. |
 | `LevelTimeout` | Not level after 120 s (Auto Stop mode only). |
