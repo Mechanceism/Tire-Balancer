@@ -29,6 +29,9 @@ static Actuator act[2] = {
 static bool     filterSeeded = false;
 static float    gyroBiasX    = 0;      // gyro zero, raw counts, machine X / Y
 static float    gyroBiasY    = 0;
+static bool     biasReady    = false;  // zero learned: only then is the gyro used
+static float    biasSumX, biasSumY;    // first-time learning: average over a still second
+static uint8_t  biasCount    = 0;
 
 static void toMachine(const int8_t ax[2], const int16_t s[3], int16_t m[3]);
 static uint8_t  spikeRun     = 0;
@@ -114,18 +117,9 @@ void levelInit() {
   mpuBottom.setYAccelOffset(429);
   mpuBottom.setZAccelOffset(4791);
 
-  // Starting gyro zero (the platform is still at power-up); tracked from then on.
-  long sx = 0, sy = 0;
-  for (uint8_t i = 0; i < 32; i++) {
-    int16_t s[3], m[3];
-    mpuTop.getRotation(&s[0], &s[1], &s[2]);
-    toMachine(cfg.topAxis, s, m);
-    sx += m[0];
-    sy += m[1];
-    delay(3);
-  }
-  gyroBiasX = sx / 32.0f;
-  gyroBiasY = sy / 32.0f;
+  // No gyro zero is measured here: right after power-on the MPU's gyro has not
+  // settled, and a zero taken now was found 10 deg/s out (2026-11-14), which
+  // made leveling hunt. It is learned in levelTick once the platform is still.
 }
 
 // ------------------------------------------------------------ MPU orientation
@@ -424,17 +418,35 @@ void levelTick(uint32_t now, float dt) {
       stillR = r;
     }
     uint32_t ms = millis();
-    if (stillTicks >= STILL_TICKS && act[0].dir == 0 && act[1].dir == 0 &&
-        ms - act[0].restAt > GYRO_REST_MS && ms - act[1].restAt > GYRO_REST_MS) {
-      gyroBiasX += GYRO_BIAS_RATE * (g[0] - gyroBiasX);
-      gyroBiasY += GYRO_BIAS_RATE * (g[1] - gyroBiasY);
+    bool still = stillTicks >= STILL_TICKS && act[0].dir == 0 && act[1].dir == 0 &&
+                 ms - act[0].restAt > GYRO_REST_MS && ms - act[1].restAt > GYRO_REST_MS;
+    if (still && !biasReady) {
+      // Learn the zero from one continuous still second, then switch the gyro in.
+      biasSumX += g[0];
+      biasSumY += g[1];
+      if (++biasCount >= BIAS_LEARN_TICKS) {
+        gyroBiasX = biasSumX / biasCount;
+        gyroBiasY = biasSumY / biasCount;
+        biasReady = true;
+      }
+    } else if (still) {
+      if (fabs(g[0] - gyroBiasX) > BIAS_BAD_COUNTS || fabs(g[1] - gyroBiasY) > BIAS_BAD_COUNTS) {
+        biasReady = false;              // still, yet "rotating": the zero is wrong, learn it again
+      } else {
+        gyroBiasX += GYRO_BIAS_RATE * (g[0] - gyroBiasX);
+        gyroBiasY += GYRO_BIAS_RATE * (g[1] - gyroBiasY);
+      }
+    }
+    if (!still || biasReady) {          // first-time learning needs one unbroken still second
+      biasSumX = biasSumY = 0;
+      biasCount = 0;
     }
   }
   // Rotation about machine +X raises the 90 deg side (pitch up); rotation
   // about machine +Y lowers the 0 deg side (roll down).
   float rateP =  (g[0] - gyroBiasX) / GYRO_COUNTS_DPS;   // deg/s
   float rateR = -(g[1] - gyroBiasY) / GYRO_COUNTS_DPS;
-  bool  useGyro = cfg.gyroMix > 0;
+  bool  useGyro = cfg.gyroMix > 0 && biasReady;    // accelerometer only until the zero is known
 
   // A live accelerometer always has a little noise. Identical readings for
   // half a second mean the sensor or the I2C bus has stopped answering.

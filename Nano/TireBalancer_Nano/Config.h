@@ -62,6 +62,8 @@ const uint8_t PIN_HX_SCK[3]  = {3, 8, 12};
 #define GYRO_REST_MS      500       // actuators off this long before tracking the bias
 #define STILL_DEG         0.1f      // accel angle within this of where it was...
 #define STILL_TICKS       25        // ...for this many ticks (0.5 s) = platform still
+#define BIAS_LEARN_TICKS  50        // gyro zero first learned from 1 s of stillness
+#define BIAS_BAD_COUNTS   262.0f    // 2 deg/s left over while still = zero wrong, relearn
 #define BASE_CHECK_TICKS  25        // read the frame MPU every 25 ticks (0.5 s)
 #define ARM_TICKS         5         // error must stay outside the band this long before moving (0.1 s)
 #define STABLE_TICKS      15        // both actuators at rest this long = level (0.3 s)

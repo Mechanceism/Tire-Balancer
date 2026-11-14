@@ -265,7 +265,8 @@ static void diagPrint() {
   Serial.print(',');             Serial.print(rollTrim);
   Serial.print(F(" lv"));        Serial.print((millis() - levelStartMs) / 1000);
   Serial.println();
-  Serial.print(F("# D bias"));   Serial.print(gyroBiasX, 0);
+  Serial.print(F("# D bias"));   Serial.print(biasReady);
+  Serial.print(' ');             Serial.print(gyroBiasX, 0);
   Serial.print(',');             Serial.print(gyroBiasY, 0);
   Serial.print(F(" g"));         Serial.print(gyroX);
   Serial.print(',');             Serial.print(gyroY);
