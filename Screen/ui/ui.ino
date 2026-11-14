@@ -49,6 +49,16 @@
 #define CLIP_ON_OFFSET_MM    10.0f    // clip-on weight on the rim flange (outside the bead seat)
 #define STICK_ON_OFFSET_MM  -15.0f    // stick-on weight inside the barrel
 
+// Older inch sizes (4.80-12) give no aspect ratio. Sidewall height is taken
+// as this fraction of the width (published diameters of such tires give
+// about 0.9-0.98). For an exact value type the flotation form with the
+// measured overall diameter instead, e.g. 21.4x4.80-12.
+#define INCH_SIZE_ASPECT     0.95f
+
+// Defined up here because the Arduino IDE puts its generated function
+// prototypes above the first function, and they use this type.
+struct TireSize { float widthMm, sideMm, rimMm; };
+
 // ------------------------------------------------------------ touch (CST816D, bit-banged over I2C)
 #define I2C_SDA 33
 #define I2C_SCL 32
@@ -96,8 +106,10 @@ uint32_t lastSliderSendMs = 0;
 
 lv_obj_t *statusLabel   = NULL;   // bottom-left corner, on every screen
 lv_obj_t *messageBox    = NULL;
-lv_obj_t *weightPosSwitch = NULL;
-lv_obj_t *weightPosLabel  = NULL;
+lv_obj_t *weightPosDd = NULL;    // Tire Info: Clip-on / Stick-on
+lv_obj_t *tireTa      = NULL;    // Tire Info: size text box
+lv_obj_t *tireResult  = NULL;    // Tire Info: what the size means
+lv_obj_t *tireKb      = NULL;    // on-screen keyboard
 uint32_t  statusNoteUntil = 0;
 
 /*Don't forget to set Sketchbook location in File/Preferences to the path of your UI project (the parent foder of this INO file)*/
@@ -348,17 +360,84 @@ void refreshResults() {
   lv_label_set_text(ui_TotalWeightValueLabel, txt);
 }
 
+// ---- tire size, typed as printed on the sidewall
+// Understood formats (spaces and a leading P / LT / ST / T are ignored):
+//   metric     215/65R15  ST205/75D15  215/65-15   width mm / aspect % / rim in
+//   inch       4.80-12  6.00-16  4.80/4.00-8      width in - rim in (sidewall estimated)
+//   flotation  18x8.50-8  31x10.50R15  (or *)     diameter in x width in - rim in
+static TireSize tire;
+
+static float readNum(const char *&p) {
+  float v = 0, scale = 0;
+  bool any = false;
+  while ((*p >= '0' && *p <= '9') || *p == '.') {
+    if (*p == '.') {
+      if (scale) break;
+      scale = 1;
+    } else {
+      v = v * 10 + (*p - '0');
+      if (scale) scale *= 10;
+      any = true;
+    }
+    p++;
+  }
+  if (!any) return -1;
+  return scale ? v / scale : v;
+}
+static void skipSpaces(const char *&p)    { while (*p == ' ') p++; }
+static void skipNonDigits(const char *&p) { while (*p && !(*p >= '0' && *p <= '9')) p++; }
+
+static bool parseTireSize(const char *in, TireSize &t) {
+  char s[32];
+  uint8_t n = 0;
+  for (const char *q = in; *q && n < sizeof(s) - 1; q++) s[n++] = toupper(*q);
+  s[n] = 0;
+  const char *p = s;
+  skipNonDigits(p);                                   // P, LT, ST ...
+  float a = readNum(p);
+  if (a <= 0) return false;
+  skipSpaces(p);
+  if (a >= 60) {                                      // metric: width in mm
+    if (*p != '/') return false;
+    p++; skipSpaces(p);
+    float aspect = readNum(p);
+    skipNonDigits(p);
+    float rim = readNum(p);                           // stops before a load index ("15 95H")
+    if (aspect <= 0 || rim <= 0) return false;
+    t.widthMm = a;
+    t.sideMm  = a * aspect / 100;
+    t.rimMm   = rim * 25.4f;
+  } else if (*p == 'X' || *p == '*') {                // flotation: diameter x width - rim
+    p++; skipSpaces(p);
+    float w = readNum(p);
+    skipNonDigits(p);
+    float rim = readNum(p);
+    if (w <= 0 || rim <= 0 || a <= rim) return false;
+    t.widthMm = w * 25.4f;
+    t.sideMm  = (a - rim) / 2 * 25.4f;
+    t.rimMm   = rim * 25.4f;
+  } else {                                            // inch: width - rim
+    if (*p == '/') { p++; readNum(p); }               // 4.80/4.00-8: second width ignored
+    skipNonDigits(p);
+    float rim = readNum(p);
+    if (rim <= 0) return false;
+    t.widthMm = a * 25.4f;
+    t.sideMm  = t.widthMm * INCH_SIZE_ASPECT;
+    t.rimMm   = rim * 25.4f;
+  }
+  return t.widthMm > 50 && t.widthMm < 500 && t.sideMm > 20 && t.sideMm < 400 &&
+         t.rimMm > 100 && t.rimMm < 800;
+}
+
 // ---- things sent in more than one place
 static void sendTireInfo() {
-  int   treadMm   = lv_slider_get_value(ui_TreadWidthSlider);
-  int   aspectPct = lv_slider_get_value(ui_SideWallPercentSlider);
-  float rimMm     = lv_slider_get_value(ui_RimDiameterSlider) * 25.4f;          // inches -> mm
-  float offsetMm  = isChecked(weightPosSwitch) ? STICK_ON_OFFSET_MM : CLIP_ON_OFFSET_MM;
+  bool  stickOn  = lv_dropdown_get_selected(weightPosDd) == 1;
+  float offsetMm = stickOn ? STICK_ON_OFFSET_MM : CLIP_ON_OFFSET_MM;
 
-  nanoSend("TreadW%d", treadMm);
-  nanoSend("SideWall%d", aspectPct);
-  nanoSend("RimD%.1f", rimMm);
-  nanoSend("WeightR%.1f", rimMm / 2 + offsetMm);
+  nanoSend("TreadW%.0f", tire.widthMm);
+  nanoSend("SideWall%.1f", tire.sideMm / tire.widthMm * 100);    // aspect ratio, %
+  nanoSend("RimD%.1f", tire.rimMm);
+  nanoSend("WeightR%.1f", tire.rimMm / 2 + offsetMm);
 }
 
 static void sendSwitches() {
@@ -616,9 +695,48 @@ void LaserButton_event_handler(lv_event_t * e) {
 }
 void TireInfoEnterButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+  TireSize t;
+  if (!parseTireSize(lv_textarea_get_text(tireTa), t)) {
+    showMessage("Tire size", "Size not recognised. Type it as printed on the tire, e.g.\n"
+                             "4.80-12   215/65R15   18x8.50-8");
+    return;
+  }
+  tire = t;
   tireEntered = true;
   sendTireInfo();
   statusNote("Tire info sent");
+}
+
+// Live readout of what the typed size means
+static void showTireResult() {
+  const char *txt = lv_textarea_get_text(tireTa);
+  TireSize t;
+  char b[96];
+  if (parseTireSize(txt, t)) {
+    snprintf(b, sizeof(b), "Width %.0f mm, sidewall %.0f mm\nRim %.0f mm, tire %.0f mm across",
+             t.widthMm, t.sideMm, t.rimMm, t.rimMm + 2 * t.sideMm);
+  } else {
+    snprintf(b, sizeof(b), "%s4.80-12   215/65R15   18x8.50-8", *txt ? "Not recognised. e.g.\n" : "e.g.\n");
+  }
+  lv_label_set_text(tireResult, b);
+}
+
+static void tireTa_event_cb(lv_event_t * e) {
+  lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_CLICKED || code == LV_EVENT_FOCUSED) {
+    lv_keyboard_set_textarea(tireKb, tireTa);
+    lv_obj_clear_flag(tireKb, LV_OBJ_FLAG_HIDDEN);
+  } else if (code == LV_EVENT_VALUE_CHANGED) {
+    showTireResult();
+  }
+}
+
+static void tireKb_event_cb(lv_event_t * e) {
+  lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_READY || code == LV_EVENT_CANCEL) {
+    lv_obj_add_flag(tireKb, LV_OBJ_FLAG_HIDDEN);
+    showTireResult();
+  }
 }
 void SpeedEnterButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
@@ -661,8 +779,7 @@ void AutoStopCheckbox_event_handler(lv_event_t * e) {
 void UnitsSwitch_event_cb(lv_event_t * e) {
   refreshResults();
 }
-void WeightPosSwitch_event_cb(lv_event_t * e) {
-  lv_label_set_text(weightPosLabel, isChecked(weightPosSwitch) ? "Weight:\nStick-on" : "Weight:\nClip-on");
+void WeightPos_event_cb(lv_event_t * e) {
   if (tireEntered) sendTireInfo();
 }
 
@@ -674,18 +791,49 @@ static void setupExtraWidgets() {
   lv_obj_align(statusLabel, LV_ALIGN_BOTTOM_LEFT, 4, -2);
   showLinkState();
 
-  // Tire Info tab: where the balance weight will be placed
-  weightPosSwitch = lv_switch_create(ui_Tire_Info_Tab);
-  lv_obj_set_width(weightPosSwitch, 100);
-  lv_obj_set_height(weightPosSwitch, 40);
-  lv_obj_set_x(weightPosSwitch, lv_pct(35));
-  lv_obj_set_y(weightPosSwitch, lv_pct(35));
-  lv_obj_set_align(weightPosSwitch, LV_ALIGN_CENTER);
-  weightPosLabel = lv_label_create(weightPosSwitch);
-  lv_obj_set_align(weightPosLabel, LV_ALIGN_CENTER);
-  lv_obj_set_style_text_align(weightPosLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_label_set_text(weightPosLabel, "Weight:\nClip-on");
-  lv_obj_add_event_cb(weightPosSwitch, WeightPosSwitch_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+  // Tire Info tab, rebuilt in code: the size is typed as printed on the tire
+  // (the SquareLine sliders only suited metric sizes, so they are hidden).
+  lv_obj_t *oldTireWidgets[] = {ui_Panel2, ui_TreadWidthSlider, ui_TireWidthValueLabel,
+                                ui_SideWallPercentSlider, ui_SideWallPercentValueLabel,
+                                ui_RimDiameterSlider, ui_RimDiameterValueLabel,
+                                ui_TreadWidthLabel, ui_AspectRatioLabel, ui_RimDiameterLabel};
+  for (lv_obj_t *o : oldTireWidgets) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+
+  lv_obj_t *title = lv_label_create(ui_Tire_Info_Tab);
+  lv_label_set_text(title, "Tire size, as printed:");
+  lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
+
+  tireTa = lv_textarea_create(ui_Tire_Info_Tab);
+  lv_textarea_set_one_line(tireTa, true);
+  lv_textarea_set_max_length(tireTa, 24);
+  lv_textarea_set_placeholder_text(tireTa, "4.80-12");
+  lv_obj_set_width(tireTa, 170);
+  lv_obj_align(tireTa, LV_ALIGN_TOP_LEFT, 0, 20);
+  lv_obj_add_event_cb(tireTa, tireTa_event_cb, LV_EVENT_ALL, NULL);
+
+  tireResult = lv_label_create(ui_Tire_Info_Tab);
+  lv_obj_align(tireResult, LV_ALIGN_TOP_LEFT, 0, 62);
+
+  lv_obj_t *wl = lv_label_create(ui_Tire_Info_Tab);
+  lv_label_set_text(wl, "Weight:");
+  lv_obj_align(wl, LV_ALIGN_TOP_LEFT, 0, 112);
+  weightPosDd = lv_dropdown_create(ui_Tire_Info_Tab);
+  lv_dropdown_set_options(weightPosDd, "Clip-on\nStick-on");
+  lv_obj_set_width(weightPosDd, 110);
+  lv_obj_align(weightPosDd, LV_ALIGN_TOP_LEFT, 60, 102);
+  lv_obj_add_event_cb(weightPosDd, WeightPos_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+  lv_obj_set_size(ui_TireInfoEnterButton, 90, 50);
+  lv_obj_align(ui_TireInfoEnterButton, LV_ALIGN_TOP_RIGHT, 0, 20);
+
+  // On-screen keyboard (starts on numbers and symbols; "ABC" for letters)
+  tireKb = lv_keyboard_create(lv_layer_top());
+  lv_obj_set_size(tireKb, LV_PCT(100), LV_PCT(55));
+  lv_obj_align(tireKb, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_keyboard_set_mode(tireKb, LV_KEYBOARD_MODE_SPECIAL);
+  lv_obj_add_flag(tireKb, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_event_cb(tireKb, tireKb_event_cb, LV_EVENT_ALL, NULL);
+  showTireResult();
 
   // Debug tab: the old "Speed Curve Exp." slider is now the leveling PID gain.
   // Slider start values match the Nano's tuned defaults (Settings.ino), so
