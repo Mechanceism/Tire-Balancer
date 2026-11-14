@@ -29,6 +29,11 @@ void settingsDefaults() {
   // agreed within ~1 deg with the same corners measured at -8.5 deg.)
   const float reach[4][2] = {{22.68, 27.93}, {18.93, -5.07}, {-8.47, -3.06}, {-10.06, 23.81}};
   memcpy(cfg.reach, reach, sizeof(reach));
+
+  cfg.topAxis[0]  = TOP_AXIS_X;
+  cfg.topAxis[1]  = TOP_AXIS_Y;
+  cfg.baseAxis[0] = BASE_AXIS_X;
+  cfg.baseAxis[1] = BASE_AXIS_Y;
 }
 
 void settingsLoad() {
@@ -56,6 +61,10 @@ void settingsPrint() {
   Serial.print(F("# Alpha "));       Serial.print(cfg.alpha);
   Serial.print(F(" LevelTol "));     Serial.println(cfg.levelTol);
   Serial.print(F("# Gyro "));        Serial.println(cfg.gyroMix);
+  Serial.print(F("# Axes top "));    Serial.print(cfg.topAxis[0]);
+  Serial.print(',');                 Serial.print(cfg.topAxis[1]);
+  Serial.print(F(" base "));         Serial.print(cfg.baseAxis[0]);
+  Serial.print(',');                 Serial.println(cfg.baseAxis[1]);
   Serial.print(F("# Reach"));
   for (uint8_t i = 0; i < 4; i++) {
     Serial.print(' ');  Serial.print(cfg.reach[i][0], 1);

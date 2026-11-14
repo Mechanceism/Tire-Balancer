@@ -63,7 +63,7 @@ streams). The screen ignores them.
 | `LaserOn` / `LaserOff` / `LaserToggle` | off | Laser + servo pointing at the last balance result. |
 | `ManualLaserOn` / `ManualLaserOff` | off | Point at `LaserAngle` instead of the result. |
 | `LevelDebugOn` / `LevelDebugOff` | off | `# P:.. R:.. B:.. A:..,.. X:.. M:..` 10x a second: pitch error, roll error, frame tilt, actuator PWM, samples skipped as jolts, degrees level is inside the reach area. |
-| `SensorDebugOn` / `SensorDebugOff` | off | `# T:p,r F:p,r G:x,y` 10x a second: raw platform angles, frame angles, raw gyro counts. |
+| `SensorDebugOn` / `SensorDebugOff` | off | `# T:p,r F:p,r G:x,y Z:tb` 10x a second: platform pitch,roll; frame pitch,roll; platform gyro (machine X,Y counts); `+`/`-` = each MPU's machine Z points up/down (should be `++`). |
 | `ScaleDebugOn` / `ScaleDebugOff` | off | `# W:a,b,c T:total Ang:.. M:..` 2x a second: live load cells and result. |
 | `LoopRateOn` / `LoopRateOff` | off | `# LoopRate n` once a second. |
 
@@ -91,6 +91,8 @@ streams). The screen ignores them.
 | `CalA<n>` / `CalB<n>` / `CalC<n>` | kg | automatically | Calibrate one load cell with a known mass on that arm. See [Setup.md](Setup.md). |
 | `JogLeft<n>` / `JogRight<n>` | signed PWM | no | Commissioning: run actuator 1 (left, 150°) or 2 (right, 30°) for `JogTime`, then stop. Positive = up. Both can run at once. |
 | `JogTime<n>` | ms | no | Jog length, 100-40000 (default 1000). |
+| `TopAxisX<n>` / `TopAxisY<n>` | ±1..3 | yes | Platform MPU mounting: which sensor axis points along machine +X (0°) / +Y (90°). 1 = X, 2 = Y, 3 = Z, negative = reversed. See [Setup.md](Setup.md). |
+| `BaseAxisX<n>` / `BaseAxisY<n>` | ±1..3 | yes | Frame MPU mounting, same meaning. |
 
 Command names never contain digits: the parser reads the first digit as the
 start of the value (`Jog1100` would be `Jog` = 1100).
@@ -114,6 +116,7 @@ start of the value (`Jog1100` would be `Jog` = 1100).
 | `Busy` | A different job is still running. |
 | `BaseTilt` | Level is outside (or within 1° of the edge of) the platform's reach area for the frame's current tilt. While hunting, sent if the frame moves level out of reach. Without a reach area: frame tilted 13° or more. |
 | `Reach` | `FindReach` failed (sensor missing, or an actuator never stopped within 40 s). |
+| `Axes` | An MPU orientation pair is invalid (an axis missing, out of range, or X and Y the same sensor axis). |
 | `MPUTop` | Platform angle sensor missing or frozen. |
 | `MPUBottom` | Frame angle sensor missing. |
 | `LevelTimeout` | Not level after 120 s (Auto Stop mode only). |

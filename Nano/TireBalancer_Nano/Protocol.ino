@@ -79,6 +79,7 @@ static void eventSend() {
         case ERR_NO_TARE:       out.print(F("NoTare"));       break;
         case ERR_CAL:           out.print(F("Cal"));          break;
         case ERR_REACH:         out.print(F("Reach"));        break;
+        case ERR_AXES:          out.print(F("Axes"));         break;
       }
       break;
   }
@@ -171,6 +172,13 @@ static bool runCommand(const char *key, bool hasVal, float v) {
   else if (IS("JogRight"))    { jogStart(1, v); }   // actuator 2, at 30 deg
   else if (IS("JogTime"))     { jogSetTime(v); }    // ms, default 1000
   else if (IS("Gyro"))        { cfg.gyroMix = constrain(v, 0.0f, 0.995f); }
+
+  // ---- MPU mounting: sensor axis along machine +X / +Y (1=X 2=Y 3=Z, - = reversed)
+  // Takes effect at once; Save to keep. Level refuses while a pair is invalid.
+  else if (IS("TopAxisX"))    { cfg.topAxis[0]  = (int8_t)v; }
+  else if (IS("TopAxisY"))    { cfg.topAxis[1]  = (int8_t)v; }
+  else if (IS("BaseAxisX"))   { cfg.baseAxis[0] = (int8_t)v; }
+  else if (IS("BaseAxisY"))   { cfg.baseAxis[1] = (int8_t)v; }
 
   // ---- tire data (metric: mm and percent)
   else if (IS("RimD"))        { rimD = v * 0.001f; }

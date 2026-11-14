@@ -46,8 +46,17 @@ const uint8_t PIN_HX_SCK[3]  = {3, 8, 12};
 #define REACH_STALL_DEG    0.08f    // corner moving less than this in 1 s = at its end stop
 #define REACH_LEG_MS       40000UL  // give up on a leg after this long
 
-// Gyro (platform MPU, +-250 deg/s): pitch rate = +gyro Y, roll rate = -gyro X
-// (measured 2026-11-13). Zero offset is tracked while both actuators rest.
+// MPU mounting. Machine axes: +X toward 0 deg (right), +Y toward 90 deg (far
+// side), +Z up. For each MPU give the sensor axis that points along machine +X
+// and along machine +Y: 1 = sensor X, 2 = sensor Y, 3 = sensor Z, negative =
+// the other way. Z is worked out from those. Change at run time with
+// TopAxisX/TopAxisY/BaseAxisX/BaseAxisY (saved), see docs/Setup.md.
+#define TOP_AXIS_X        2         // platform MPU: machine +X = sensor +Y
+#define TOP_AXIS_Y        1         //               machine +Y = sensor +X (MPU upside down)
+#define BASE_AXIS_X      -2         // frame MPU:    machine +X = sensor -Y
+#define BASE_AXIS_Y       1         //               machine +Y = sensor +X (MPU face up)
+
+// Gyro (platform MPU, +-250 deg/s). Zero offset is tracked while both actuators rest.
 #define GYRO_COUNTS_DPS   131.0f
 #define GYRO_BIAS_RATE    0.02f     // bias tracking per tick (about 1 s time constant)
 #define GYRO_REST_MS      500       // actuators off this long before tracking the bias
@@ -101,11 +110,11 @@ enum : uint8_t { EV_NONE, EV_LEVEL_DONE, EV_TARE_DONE, EV_BALANCE_DONE, EV_ERROR
 
 enum : uint8_t {
   ERR_BUSY, ERR_BASE_TILT, ERR_MPU_TOP, ERR_MPU_BOTTOM, ERR_LEVEL_TIMEOUT,
-  ERR_SCALE, ERR_TIRE_DATA, ERR_NO_LOAD, ERR_NO_TARE, ERR_CAL, ERR_REACH
+  ERR_SCALE, ERR_TIRE_DATA, ERR_NO_LOAD, ERR_NO_TARE, ERR_CAL, ERR_REACH, ERR_AXES
 };
 
 // Everything in here survives power-off ("Save" command, EEPROM).
-#define SETTINGS_MAGIC 0x7B07
+#define SETTINGS_MAGIC 0x7B08
 struct Settings {
   uint16_t magic;
   float cal[3];        // load cell counts per kg (sign included) - set with CalA/CalB/CalC
@@ -122,4 +131,6 @@ struct Settings {
   float testMass;      // kg added to every load cell while TestMass is on
   float gyroMix;       // 0 = accelerometer only, 0.9-0.98 = trust the gyro for fast changes
   float reach[4][2];   // reach area corners (c1, c2): LupRup, LupRdown, LdownRdown, LdownRup
+  int8_t topAxis[2];   // platform MPU mounting: sensor axis along machine +X, +Y
+  int8_t baseAxis[2];  // frame MPU mounting
 };

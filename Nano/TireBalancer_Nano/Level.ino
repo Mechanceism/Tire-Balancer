@@ -25,8 +25,10 @@ static Actuator act[2] = {
 };
 
 static bool     filterSeeded = false;
-static float    gyroBiasX    = 0;      // gyro zero, raw counts
+static float    gyroBiasX    = 0;      // gyro zero, raw counts, machine X / Y
 static float    gyroBiasY    = 0;
+
+static void toMachine(const int8_t ax[2], const int16_t s[3], int16_t m[3]);
 static uint8_t  spikeRun     = 0;
 static uint8_t  stableTicks  = 0;
 static uint8_t  staleTicks   = 0;
@@ -97,14 +99,48 @@ void levelInit() {
   // Starting gyro zero (the platform is still at power-up); tracked from then on.
   long sx = 0, sy = 0;
   for (uint8_t i = 0; i < 32; i++) {
-    int16_t x, y, z;
-    mpuTop.getRotation(&x, &y, &z);
-    sx += x;
-    sy += y;
+    int16_t s[3], m[3];
+    mpuTop.getRotation(&s[0], &s[1], &s[2]);
+    toMachine(cfg.topAxis, s, m);
+    sx += m[0];
+    sy += m[1];
     delay(3);
   }
   gyroBiasX = sx / 32.0f;
   gyroBiasY = sy / 32.0f;
+}
+
+// ------------------------------------------------------------ MPU orientation
+// Machine axes: +X toward 0 deg (right), +Y toward 90 deg (far side), +Z up.
+// cfg.topAxis / cfg.baseAxis = {sensor axis along machine +X, along machine +Y}:
+// 1 = sensor X, 2 = sensor Y, 3 = sensor Z, negative = pointing the other way.
+// Machine Z follows from those two (right-handed), so an upside-down MPU needs
+// no extra setting.
+bool axesValid(const int8_t ax[2]) {
+  uint8_t a = abs(ax[0]), b = abs(ax[1]);
+  return a >= 1 && a <= 3 && b >= 1 && b <= 3 && a != b;
+}
+
+// Sensor axis code along machine +Z = (axis along X) cross (axis along Y)
+static int8_t axisZ(int8_t x, int8_t y) {
+  int8_t a = abs(x), b = abs(y);
+  int8_t s = ((a % 3) + 1 == b) ? 1 : -1;     // X*Y=Z, Y*Z=X, Z*X=Y are positive
+  if (x < 0) s = -s;
+  if (y < 0) s = -s;
+  return s * (6 - a - b);
+}
+
+static int16_t pickAxis(int8_t code, const int16_t s[3]) {
+  int16_t v = s[abs(code) - 1];
+  if (code > 0) return v;
+  return (v == -32768) ? 32767 : -v;
+}
+
+// Sensor reading (x, y, z) -> machine (X, Y, Z). Works for accel and gyro.
+static void toMachine(const int8_t ax[2], const int16_t s[3], int16_t m[3]) {
+  m[0] = pickAxis(ax[0], s);
+  m[1] = pickAxis(ax[1], s);
+  m[2] = pickAxis(axisZ(ax[0], ax[1]), s);
 }
 
 static bool mpuPresent(uint8_t addr) {
@@ -144,15 +180,12 @@ static float reachMarginFor(float x, float y) {
 }
 
 static void readBase() {
-  int16_t ax, ay, az;
-  mpuBottom.getAcceleration(&ax, &ay, &az);
-  baseAz    = az;
-  basePitch = tiltDeg(ax);
-  // The platform MPU is mounted upside down and the frame MPU face up, with
-  // their X axes the same way (checked 2026-11-13: block under the 270 deg side
-  // moved both pitches down; Z signs -,+). So their Y axes are opposite and the
-  // frame's roll is negated to match the platform's convention.
-  baseRoll  = -tiltDeg(ay);
+  int16_t s[3], m[3];
+  mpuBottom.getAcceleration(&s[0], &s[1], &s[2]);
+  toMachine(cfg.baseAxis, s, m);
+  baseAz    = m[2];
+  basePitch = tiltDeg(m[1]);      // 90 deg side up -> +
+  baseRoll  = tiltDeg(m[0]);      // 0 deg side up -> +
   baseAngle = sqrt(basePitch * basePitch + baseRoll * baseRoll);
 
   // Where level is, in corner angles relative to the frame
@@ -168,6 +201,7 @@ void levelStart() {
   if (state != ST_IDLE)             { eventError(ERR_BUSY);       return; }
   if (!mpuPresent(MPU_TOP_ADDR))    { eventError(ERR_MPU_TOP);    return; }
   if (!mpuPresent(MPU_BOTTOM_ADDR)) { eventError(ERR_MPU_BOTTOM); return; }
+  if (!axesValid(cfg.topAxis) || !axesValid(cfg.baseAxis)) { eventError(ERR_AXES); return; }
   readBase();
   if (reachMargin < REACH_MARGIN_START) { eventError(ERR_BASE_TILT); return; }
 
@@ -215,6 +249,7 @@ static void reachLegBegin(uint32_t now) {
 void reachStart() {
   if (state != ST_IDLE) { eventError(ERR_BUSY); return; }
   if (!mpuPresent(MPU_TOP_ADDR) || !mpuPresent(MPU_BOTTOM_ADDR)) { eventError(ERR_REACH); return; }
+  if (!axesValid(cfg.topAxis) || !axesValid(cfg.baseAxis)) { eventError(ERR_AXES); return; }
   actuatorsStop();
   reachLeg = 0;
   reachLegBegin(millis());
@@ -344,22 +379,27 @@ static void driveBoth(float u1, float u2) {
 // ------------------------------------------------------------ control tick
 // Runs every LEVEL_PERIOD_MS while leveling (or while the level debug stream is on).
 void levelTick(uint32_t now, float dt) {
-  int16_t ax, ay, az, gx, gy, gz;
-  mpuTop.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-  gyroX = gx;
-  gyroY = gy;
+  int16_t s[6], a[3], g[3];
+  mpuTop.getMotion6(&s[0], &s[1], &s[2], &s[3], &s[4], &s[5]);
+  toMachine(cfg.topAxis, s, a);          // accel, machine axes
+  toMachine(cfg.topAxis, s + 3, g);      // gyro, machine axes
+  int16_t ax = a[0], ay = a[1], az = a[2];
+  gyroX = g[0];
+  gyroY = g[1];
   topAz = az;
 
-  // Gyro zero drifts (it was -4 deg/s on X when first measured): follow it
-  // whenever both actuators have been off for a moment.
+  // Gyro zero drifts (it was -4 deg/s on one axis when first measured):
+  // follow it whenever both actuators have been off for a moment.
   uint32_t ms = millis();
   if (act[0].dir == 0 && act[1].dir == 0 &&
       ms - act[0].restAt > GYRO_REST_MS && ms - act[1].restAt > GYRO_REST_MS) {
-    gyroBiasX += GYRO_BIAS_RATE * (gx - gyroBiasX);
-    gyroBiasY += GYRO_BIAS_RATE * (gy - gyroBiasY);
+    gyroBiasX += GYRO_BIAS_RATE * (g[0] - gyroBiasX);
+    gyroBiasY += GYRO_BIAS_RATE * (g[1] - gyroBiasY);
   }
-  float rateP =  (gy - gyroBiasY) / GYRO_COUNTS_DPS;     // deg/s
-  float rateR = -(gx - gyroBiasX) / GYRO_COUNTS_DPS;
+  // Rotation about machine +X raises the 90 deg side (pitch up); rotation
+  // about machine +Y lowers the 0 deg side (roll down).
+  float rateP =  (g[0] - gyroBiasX) / GYRO_COUNTS_DPS;   // deg/s
+  float rateR = -(g[1] - gyroBiasY) / GYRO_COUNTS_DPS;
   bool  useGyro = cfg.gyroMix > 0;
 
   // A live accelerometer always has a little noise. Identical readings for
@@ -371,8 +411,8 @@ void levelTick(uint32_t now, float dt) {
   }
   lastAx = ax; lastAy = ay; lastAz = az;
 
-  float pitch = tiltDeg(ax);
-  float roll  = tiltDeg(ay);
+  float pitch = tiltDeg(ay);             // 90 deg side up -> +
+  float roll  = tiltDeg(ax);             // 0 deg side up -> +
   pitchRaw = pitch;
   rollRaw  = roll;
 

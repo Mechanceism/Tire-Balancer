@@ -126,11 +126,36 @@ How far the frame may tilt depends on which side is high (measured 2026-11-13):
 At level the actuators are near their retracted end-stops, which is why the
 far side has so little room.
 
-MPU mounting: the platform MPU is upside down (`Z:-` in `SensorDebugOn`), the
-frame MPU face up (`Z:+`), with their X axes the same way. So the frame's roll
-is negated in `readBase()` (`Level.ino`). If either MPU is remounted, check
-again: put a block under one side of the frame and compare the `F:` and `T:`
-changes, and check the `Z:` signs.
+## MPU mounting (orientation settings)
+
+Both MPUs are read in machine axes, the same ones used for the load cells and
+laser: **+X toward 0° (right), +Y toward 90° (far side), +Z up**. For each MPU
+you tell the Nano which sensor axis points along machine +X and which along
+machine +Y. Use the axis arrows printed on the MPU board:
+
+| Value | Meaning |
+|---|---|
+| `1` / `-1` | sensor X / opposite of sensor X |
+| `2` / `-2` | sensor Y / opposite of sensor Y |
+| `3` / `-3` | sensor Z / opposite of sensor Z (for a board mounted on its side) |
+
+Commands: `TopAxisX<n> TopAxisY<n>` (platform MPU), `BaseAxisX<n> BaseAxisY<n>`
+(frame MPU), then `Save`. Machine Z is worked out from X and Y, so an upside-down
+board needs nothing extra. Defaults are in `Config.h`.
+
+Current machine (2026-11-13): platform `TopAxisX2 TopAxisY1` (upside down),
+frame `BaseAxisX-2 BaseAxisY1` (face up).
+
+Checking a mounting with `SensorDebugOn` (`T:` = platform pitch,roll; `F:` =
+frame pitch,roll; `Z:` = platform, frame):
+
+1. `Z:++` - both read "up". A `-` means that MPU's X/Y pair is wrong.
+2. Lift the 90° side: pitch (first number of `T:`/`F:`) goes **up**.
+3. Lift the 0° side: roll (second number) goes **up**.
+
+After changing a mounting: re-check `PitchOffset`/`RollOffset` with a spirit
+level, run `FindReach` again, and (platform MPU) confirm leveling does not
+overshoot - with wrong gyro axes it would.
 
 Commissioning helpers: `JogLeft<pwm>` / `JogRight<pwm>` run one actuator for
 1 s. With `LevelDebugOn` you can see which way, and how far, each one moves.

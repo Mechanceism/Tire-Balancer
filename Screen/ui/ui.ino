@@ -358,6 +358,7 @@ static const char *errorText(const char *code) {
   if (!strcasecmp(code, "Busy"))         return "The Nano is busy with something else.";
   if (!strcasecmp(code, "BaseTilt"))     return "The frame is tilted too far: the platform cannot reach level. Move it to flatter ground.";
   if (!strcasecmp(code, "Reach"))        return "Measuring the platform's range of motion failed.";
+  if (!strcasecmp(code, "Axes"))         return "An MPU mounting setting is invalid (TopAxis / BaseAxis).";
   if (!strcasecmp(code, "MPUTop"))       return "Platform angle sensor is not responding.";
   if (!strcasecmp(code, "MPUBottom"))    return "Frame angle sensor is not responding.";
   if (!strcasecmp(code, "LevelTimeout")) return "Leveling took too long and was stopped.";

@@ -93,6 +93,8 @@ Leveling tuning (2026-11-13, no tire):
 - [x] MPU mounting checked with a block under the 270 deg side: platform MPU
       upside down, frame MPU face up, X axes aligned -> frame roll negated.
       FindReach repeated at -17 deg frame pitch agreed within ~1 deg.
+- [x] MPU orientation is now a setting (TopAxisX/Y, BaseAxisX/Y) in machine
+      axes; moving an MPU needs no code change (docs/Setup.md)
 - [ ] Optional (mechanical): level sits near the actuators' retracted ends.
       Moving the mounts so level is nearer mid-stroke would allow more slope
       toward the far side.
@@ -102,7 +104,9 @@ Leveling tuning (2026-11-13, no tire):
 
 Ideas for later:
 
-- Flash is at 87%: keep an eye on it (the load boost must fit)
+- Flash is at 91%: keep an eye on it (the load boost must fit). Candidates
+  to trim: the long Status printout, debug streams, or moving to the newer
+  Optiboot bootloader (+1.5 KB, needs an ISP programmer once)
 
 - Servo linearity table for the laser
 - Work out actuator length from the two MPUs to warn before end of stroke
