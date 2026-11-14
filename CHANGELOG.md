@@ -1,10 +1,59 @@
 # Change Log
 
+## Nano V0.6.0 + Screen V0.3.0 - machine testing (2026-11-12 to 11-13)
+
+Both boards flashed and tested on the machine, each on its own USB port; the
+link between them was tested through a PC relay, not yet wired directly.
+Details and numbers are in GOALS.md.
+
+Found on the hardware and fixed
+- Both main loops read the clock before handling input, so "now - start"
+  could wrap: Tare/Balance failed at once with `Err Scale`, Level would have
+  stopped on its first tick, and the screen kept dropping the link.
+- Lines longer than 48 characters were dropped silently; now `# ? line too long`.
+- With both PID outputs at the limit the roll correction was lost; they are
+  now scaled together.
+- The frame MPU's roll had the wrong sign relative to the platform MPU (the
+  platform MPU is mounted upside down).
+
+New
+- MPU orientation settings in machine axes (`TopAxisX/Y`, `BaseAxisX/Y`),
+  so an MPU can be moved without code changes.
+- Gyro back in as a complementary filter (`Gyro`), with the correct axes and
+  a continuously tracked zero offset. Removes the filter lag.
+- Reach area: `FindReach` drives to the four actuator end-stop combinations
+  and stores how far the platform can tilt relative to the frame. `Level`
+  refuses (`Err BaseTilt`) if level is not 1.5 deg inside it for the frame's
+  tilt; replaces the single 13 deg limit. New errors `Reach`, `Axes`.
+- Samples that are not tilt (jolts, I2C timeouts) are skipped; with the gyro
+  on, the gyro carries the angle through them.
+- Commissioning commands: `JogLeft`/`JogRight`/`JogTime`, `SensorDebugOn`,
+  `TareClear`; scale debug shows readings per load cell.
+- Both boards ignore non-text bytes, so they can stay wired together through
+  a level converter while either one is programmed.
+- Smaller number/checksum parsers instead of `atof`/`strtol` (saves ~1.4 KB flash).
+
+Settings found on the machine (now the code defaults)
+- Leveling: MinSpeed 20, MaxSpeed 255, Kp 300, Ki 5, Kd 10, Gyro 0.98,
+  LevelTol 0.1 - 2-3 deg corrections in 1.6-1.8 s typically, no tire.
+- PitchOffset 1.52, RollOffset -0.30 (spirit level), LaserOffset 79.5.
+- Load cells with arms: A 100129, B 97834, C 102888 counts/kg (1.5 L bottle
+  taken as 1.55 kg).
+- Settings layout changed (EEPROM magic 0x7B08): flashing this firmware
+  resets the Nano to these defaults.
+
+Screen
+- Speed sliders start at the tuned values; `Kp` slider 10-400.
+- Error texts for `Reach` and `Axes`.
+
+Saved
+- The Nano's flash was read back before the first upload and turned out to
+  be the lost V0.5 (docs/firmware-backup, with restore instructions).
+
 ## Nano V0.6.0 + Screen V0.3.0 (rebuild)
 
 Nano V0.5 was lost with a corrupted flash drive. This is a rebuild from V0.4,
 the V0.5 notes below and the screen code that was written against V0.5.
-Compiled and simulated; not yet run on the machine.
 
 Repo
 - One Nano sketch (`Nano/TireBalancer_Nano`) and one screen sketch (`Screen/ui`)

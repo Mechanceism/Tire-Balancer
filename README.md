@@ -29,7 +29,7 @@ An Arduino Nano does the leveling, weighing and laser. An ESP32 touch screen (CY
 | [Screen/libraries](Screen/libraries) | Libraries bundled for the screen (LVGL 8.3.11, TFT_eSPI 2.5.43 with this board's setup, generated UI) |
 | [Screen/squareline](Screen/squareline) | SquareLine Studio project for the screens |
 | [Tools](Tools) | MPU6050 calibration, I2C scanner, touch test, build script |
-| [docs](docs) | [Setup](docs/Setup.md), [Wiring](docs/Wiring.md), [Protocol](docs/Protocol.md), test data |
+| [docs](docs) | [Setup](docs/Setup.md), [Wiring](docs/Wiring.md), [Protocol](docs/Protocol.md), test data, [firmware read back from the boards](docs/firmware-backup) |
 
 See [GOALS.md](GOALS.md) for where the project stands and [CHANGELOG.md](CHANGELOG.md) for history.
 Older releases (Nano V0.1-V0.4, screen V0.1-V0.2) are in the git history of `main`.
