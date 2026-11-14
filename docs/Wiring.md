@@ -51,8 +51,13 @@ its rated voltage.
 | 3.3 V | LV | |
 | | HV | 5 V |
 | GND | GND | GND |
-| TX (GPIO 1) | LV1 ⇄ HV1 | D0 (RX) |
-| RX (GPIO 3) | LV2 ⇄ HV2 | D1 (TX) |
+| TXD (GPIO 1) | LV1 ⇄ HV1 | D0 (RX) |
+| **IO35** | LV2 ⇄ HV2 | D1 (TX) |
+
+The screen's receive wire goes to **IO35**, not to RXD on the 4-pin serial
+connector. RXD (GPIO 3) is also driven by the board's own USB-serial chip,
+which held the line high so the Nano's replies never arrived: the corner showed
+`No link rx:0 bad:0` even with the level converter fitted (2026-11-14).
 
 - **LV must be the ESP32's 3.3 V.** The VCC pin on the CYD's 4-pin serial plug
   is most likely 5 V: measure it before using it for anything. If the plug has

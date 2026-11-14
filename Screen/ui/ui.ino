@@ -23,10 +23,12 @@
 #define SCREEN_FW_VERSION "0.3.0"
 
 // ------------------------------------------------------------ Nano link
-// These are the pins of the CYD's 4-pin serial connector (shared with USB).
-// If the screen cannot hear the Nano, RX is the pin to move - see docs/Wiring.md.
+// RX is on IO35, not the serial connector's RXD (GPIO 3): GPIO 3 is also
+// driven by the board's own USB-serial chip, which held it high so the Nano's
+// replies never arrived (rx:0). IO35 is input-only and driven by nothing else.
+// TX stays on the serial connector's TXD (GPIO 1).
 #define NANO_BAUD    9600        // must match SERIAL_BAUD in the Nano's Config.h
-#define NANO_RX_PIN  3
+#define NANO_RX_PIN  35
 #define NANO_TX_PIN  1
 #define NanoSerial   Serial1
 
