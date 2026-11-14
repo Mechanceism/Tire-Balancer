@@ -122,6 +122,8 @@ static bool runCommand(const char *key, bool hasVal, float v) {
   if (IS("Ping"))            { Serial.println(F("Pong")); return true; }
   if (IS("Ack"))             { evType = EV_NONE; return true; }
   if (IS("Status"))          { if (state == ST_IDLE) settingsPrint(); else reject("busy"); return true; }
+  if (IS("History"))         { historyPrint(); return true; }
+  if (IS("Diag"))            { diagPrint(); return true; }
 
   // ---- actions
   if (IS("Stop"))            { stopAll(); }
@@ -230,6 +232,50 @@ static int8_t hexDigit(char c) {
   return -1;
 }
 
+// ------------------------------------------------------------ diagnostics
+#define HIST_N   12
+#define HIST_LEN 13
+static char     histCmd[HIST_N][HIST_LEN];
+static uint16_t histTime[HIST_N];          // 0.1 s units since power-up
+static uint8_t  histPos = 0;
+
+// "# H <seconds> <command>" for the last HIST_N commands, oldest first.
+static void historyPrint() {
+  for (uint8_t k = 0; k < HIST_N; k++) {
+    uint8_t i = (histPos + k) % HIST_N;
+    if (!histCmd[i][0]) continue;
+    Serial.print(F("# H "));
+    Serial.print(histTime[i] / 10);
+    Serial.print('.');
+    Serial.print(histTime[i] % 10);
+    Serial.print(' ');
+    Serial.println(histCmd[i]);
+  }
+  Serial.print(F("# H now "));
+  Serial.println(millis() / 1000);
+}
+
+// One-line snapshot of the leveling state.
+static void diagPrint() {
+  Serial.print(F("# D st"));     Serial.print(state);
+  Serial.print(F(" as"));        Serial.print(autoStop);
+  Serial.print(F(" mc"));        Serial.print(massComp);
+  Serial.print(F(" ta"));        Serial.print(tared);
+  Serial.print(F(" tr"));        Serial.print(pitchTrim);
+  Serial.print(',');             Serial.print(rollTrim);
+  Serial.print(F(" lv"));        Serial.print((millis() - levelStartMs) / 1000);
+  Serial.println();
+  Serial.print(F("# D bias"));   Serial.print(gyroBiasX, 0);
+  Serial.print(',');             Serial.print(gyroBiasY, 0);
+  Serial.print(F(" g"));         Serial.print(gyroX);
+  Serial.print(',');             Serial.print(gyroY);
+  Serial.print(F(" act"));       Serial.print(act[0].active);
+  Serial.print(act[1].active);
+  Serial.print(F(" pwm"));       Serial.print(act[0].out);
+  Serial.print(',');             Serial.print(act[1].out);
+  Serial.print(F(" X"));         Serial.println(rejectedSamples);
+}
+
 // One token: letters, optionally followed by a number ("Kp35.5").
 static void handleToken(char *tok) {
   char *p = tok;
@@ -245,6 +291,15 @@ static void handleToken(char *tok) {
   uint8_t n = min((int)(p - tok), 15);
   memcpy(key, tok, n);
   key[n] = 0;
+  // Remember what came in (except the 2-second Ping / Ack chatter) so it can
+  // be read back later with History - even after the screen has restarted.
+  if (strcasecmp_P(key, PSTR("Ping")) && strcasecmp_P(key, PSTR("Ack")) &&
+      strcasecmp_P(key, PSTR("History")) && strcasecmp_P(key, PSTR("Diag"))) {
+    histTime[histPos] = (uint16_t)(millis() / 100);
+    strncpy(histCmd[histPos], tok, HIST_LEN - 1);
+    histCmd[histPos][HIST_LEN - 1] = 0;
+    histPos = (histPos + 1) % HIST_N;
+  }
   if (!runCommand(key, hasVal, v)) reject(tok);
 }
 
