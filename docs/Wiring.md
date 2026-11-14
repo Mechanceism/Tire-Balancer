@@ -40,6 +40,13 @@ both off and waits 150 ms (`DEAD_TIME_MS`) before any start or reversal.
 
 Angles are counter-clockwise from the right, like a normal graph.
 
+## Power
+
+- Actuators: their own supply (45 W PD), through the H-bridge drivers.
+- Logic: a dedicated 12 V to 5 V converter feeds the Nano's 5 V pin **and**
+  the screen's 4-pin connector (5 V, GND). The screen is not powered through
+  the Nano's own regulator, which could not handle its current.
+
 ## Screen (JC2432W328C) through a logic level converter
 
 Use a bidirectional level converter (the common BSS138 MOSFET type) between
