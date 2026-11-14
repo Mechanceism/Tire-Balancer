@@ -87,10 +87,15 @@ Leveling tuning (2026-11-13, no tire):
       speed. Then re-tune with a tire on.
 
 - [x] Reach area measured (FindReach): level must be inside it for the
-      frame's tilt. Allowed frame tilt depends on direction (about 7 deg in
-      some directions, over 20 in others), unlike the old single 13 deg.
-- [ ] Check the frame MPU is mounted the same way round as the platform's
-      (lift one side of the frame, see docs/Setup.md)
+      frame's tilt. Allowed frame tilt depends on direction: only ~3.4 deg
+      with the far (90 deg) side high, up to ~21 deg with the 225 deg side
+      high (table in docs/Setup.md). Old code used a single 13 deg.
+- [x] MPU mounting checked with a block under the 270 deg side: platform MPU
+      upside down, frame MPU face up, X axes aligned -> frame roll negated.
+      FindReach repeated at -17 deg frame pitch agreed within ~1 deg.
+- [ ] Optional (mechanical): level sits near the actuators' retracted ends.
+      Moving the mounts so level is nearer mid-stroke would allow more slope
+      toward the far side.
 - [x] Gyro back in (complementary filter 0.98). V0.4 had pitch/roll on the
       wrong gyro axes and no zero correction (gyro X read -4 deg/s at rest).
       With it, Kp 300: 1.6-1.8 s typical, overshoot ~0.02 deg.

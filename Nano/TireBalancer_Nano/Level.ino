@@ -146,8 +146,13 @@ static float reachMarginFor(float x, float y) {
 static void readBase() {
   int16_t ax, ay, az;
   mpuBottom.getAcceleration(&ax, &ay, &az);
+  baseAz    = az;
   basePitch = tiltDeg(ax);
-  baseRoll  = tiltDeg(ay);
+  // The platform MPU is mounted upside down and the frame MPU face up, with
+  // their X axes the same way (checked 2026-11-13: block under the 270 deg side
+  // moved both pitches down; Z signs -,+). So their Y axes are opposite and the
+  // frame's roll is negated to match the platform's convention.
+  baseRoll  = -tiltDeg(ay);
   baseAngle = sqrt(basePitch * basePitch + baseRoll * baseRoll);
 
   // Where level is, in corner angles relative to the frame
@@ -343,6 +348,7 @@ void levelTick(uint32_t now, float dt) {
   mpuTop.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
   gyroX = gx;
   gyroY = gy;
+  topAz = az;
 
   // Gyro zero drifts (it was -4 deg/s on X when first measured): follow it
   // whenever both actuators have been off for a moment.

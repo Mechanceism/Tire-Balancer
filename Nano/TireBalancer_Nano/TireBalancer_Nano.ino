@@ -57,6 +57,8 @@ float pitchRaw   = 0;           // platform angle from this tick's accelerometer
 float rollRaw    = 0;
 int16_t gyroX    = 0;           // platform gyro, raw counts (131 per deg/s)
 int16_t gyroY    = 0;
+int16_t topAz    = 0;           // vertical accel, raw: + = MPU face up, - = upside down
+int16_t baseAz   = 0;
 
 // Last balance result
 float resAngle   = 0;       // deg - where the weight goes
@@ -129,7 +131,9 @@ void debugTick(uint32_t now) {
     Serial.print(F(" F:"));   Serial.print(basePitch, 1);
     Serial.print(',');        Serial.print(baseRoll, 1);
     Serial.print(F(" G:"));   Serial.print(gyroX);
-    Serial.print(',');        Serial.println(gyroY);
+    Serial.print(',');        Serial.print(gyroY);
+    Serial.print(F(" Z:"));   Serial.print(topAz > 0 ? '+' : '-');   // MPU face up (+) or down (-)
+    Serial.println(baseAz > 0 ? '+' : '-');
   }
   static uint32_t loops = 0;
   loops++;

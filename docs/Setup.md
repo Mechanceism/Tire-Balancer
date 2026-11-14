@@ -106,14 +106,31 @@ this machine; if the platform MPU is ever remounted, re-check them with
 The platform can only tilt so far relative to the frame. `FindReach` drives the
 actuators to all four end-stop combinations (about 45 s, keep clear) and saves
 the result. `Level` then refuses with `Err BaseTilt` if level is not at least
-1° inside that area for the frame's current tilt, and hunting (Auto Stop off)
+1.5° inside that area for the frame's current tilt, and hunting (Auto Stop off)
 stops if the frame is moved out of range. `M:` in the level debug line shows
 the current margin.
 
-This assumes the frame MPU is mounted the same way round as the platform MPU.
-To check: with `SensorDebugOn`, lift the 0° side of the frame - `F:` roll (the
-second number) should go up, like the platform's. Lift the 90° side - `F:` pitch
-should go up.
+How far the frame may tilt depends on which side is high (measured 2026-11-13):
+
+| Frame side raised | Max tilt |
+|---|---|
+| 0° (right) | 6.9° |
+| 45° | 3.3° |
+| 90° (far side, actuators) | 3.4° |
+| 135° | 7.9° |
+| 180° (left) | 16.5° |
+| 225° | 20.9° |
+| 270° (screen side) | 18.6° |
+| 315° | 15.3° |
+
+At level the actuators are near their retracted end-stops, which is why the
+far side has so little room.
+
+MPU mounting: the platform MPU is upside down (`Z:-` in `SensorDebugOn`), the
+frame MPU face up (`Z:+`), with their X axes the same way. So the frame's roll
+is negated in `readBase()` (`Level.ino`). If either MPU is remounted, check
+again: put a block under one side of the frame and compare the `F:` and `T:`
+changes, and check the `Z:` signs.
 
 Commissioning helpers: `JogLeft<pwm>` / `JogRight<pwm>` run one actuator for
 1 s. With `LevelDebugOn` you can see which way, and how far, each one moves.

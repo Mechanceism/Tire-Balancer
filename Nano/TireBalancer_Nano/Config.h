@@ -39,7 +39,8 @@ const uint8_t PIN_HX_SCK[3]  = {3, 8, 12};
 // four actuator end-stop combinations (FindReach). Stored as "corner" angles:
 //   c1 = pitch - MIX_ROLL*roll (left actuator)   c2 = pitch + MIX_ROLL*roll (right)
 // of the platform minus the same for the frame.
-#define REACH_MARGIN_START 1.0f     // deg - Level refuses unless level is this far inside
+#define REACH_MARGIN_START 1.5f     // deg - Level refuses unless level is this far inside
+                                    // (repeat measurements agreed within ~1 deg)
 #define REACH_MARGIN_RUN   0.3f     // deg - leveling stops if the frame moves level outside this
 #define REACH_PWM          200      // FindReach drive
 #define REACH_STALL_DEG    0.08f    // corner moving less than this in 1 s = at its end stop
