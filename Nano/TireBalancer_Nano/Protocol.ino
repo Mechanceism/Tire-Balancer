@@ -17,7 +17,8 @@
 
 static char    lineBuf[LINE_MAX];
 static uint8_t lineLen      = 0;
-static bool    lineOverflow = false;
+static bool    lineOverflow = false;   // line longer than LINE_MAX
+static bool    lineNoise    = false;   // line contained non-text bytes
 
 static uint8_t  evType  = EV_NONE;
 static uint8_t  evArg   = 0;
@@ -229,17 +230,20 @@ void protocolPoll() {
   while (Serial.available()) {
     char c = Serial.read();
     if (c == '\n' || c == '\r') {
-      if (lineLen > 0 && !lineOverflow) {
+      if (lineLen > 0 && !lineOverflow && !lineNoise) {
         lineBuf[lineLen] = 0;
         handleLine(lineBuf);
+      } else if (lineOverflow && !lineNoise) {
+        reject("line too long");               // text only; noise is dropped silently
       }
       lineLen = 0;
       lineOverflow = false;
+      lineNoise = false;
     } else if ((uint8_t)c < 0x20 && c != '\t' || (uint8_t)c > 0x7E) {
       // Not text: line noise, or the screen being programmed (its upload
       // traffic arrives here too). Drop the line without answering, so the
       // Nano never transmits into someone else's upload.
-      lineOverflow = true;
+      lineNoise = true;
     } else if (lineLen < LINE_MAX - 1) {
       lineBuf[lineLen++] = c;
     } else {

@@ -46,6 +46,7 @@ float weightR     = 0;      // radius where the balance weight is placed (0 = ri
 // Live readings
 float weight[3]  = {0, 0, 0};   // kg on load cells A, B, C
 uint8_t hxReads[3] = {0, 0, 0}; // readings per load cell since the last scale debug line
+uint16_t rejectedSamples = 0;   // platform MPU samples skipped as not-tilt: jolts or bad reads (since power-up)
 float pitchF     = 0;           // filtered platform pitch, deg
 float rollF      = 0;           // filtered platform roll, deg
 float baseAngle  = 0;           // frame tilt, deg
@@ -122,13 +123,14 @@ void debugTick(uint32_t now) {
     loops = 0;
   }
 
-  if (dbgLevel && now - lastLevel >= 200 && Serial.availableForWrite() > 50) {
+  if (dbgLevel && now - lastLevel >= 100 && Serial.availableForWrite() > 50) {
     lastLevel = now;
     Serial.print(F("# P:"));  Serial.print(pitchF - cfg.pitchOffset - pitchTrim);
     Serial.print(F(" R:"));   Serial.print(rollF - cfg.rollOffset - rollTrim);
     Serial.print(F(" B:"));   Serial.print(baseAngle, 1);
     Serial.print(F(" A:"));   Serial.print(actuatorOutput(0));
-    Serial.print(',');        Serial.println(actuatorOutput(1));
+    Serial.print(',');        Serial.print(actuatorOutput(1));
+    Serial.print(F(" X:"));   Serial.println(rejectedSamples);     // samples skipped (jolts / bad reads)
   }
 
   if (dbgScale && now - lastScale >= 500 && Serial.availableForWrite() > 60) {

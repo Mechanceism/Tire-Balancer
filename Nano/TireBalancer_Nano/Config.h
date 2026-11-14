@@ -36,8 +36,10 @@ const uint8_t PIN_HX_SCK[3]  = {3, 8, 12};
 #define MAX_BASE_ANGLE    13.0f     // deg - frame tilt the actuators cannot correct
 #define BASE_CHECK_TICKS  25        // read the frame MPU every 25 ticks (0.5 s)
 #define ARM_TICKS         5         // error must stay outside the band this long before moving (0.1 s)
-#define STABLE_TICKS      25        // both actuators at rest this long = level (0.5 s)
+#define STABLE_TICKS      15        // both actuators at rest this long = level (0.3 s)
 #define STALE_TICKS       25        // identical MPU readings this long = sensor fault
+#define SPIKE_DEG         2.0f      // a reading this far from the filtered angle is suspect
+#define SPIKE_TICKS       5         // ...unless it repeats this many ticks in a row (0.1 s)
 #define LEVEL_TIMEOUT_MS  120000UL  // give up (Auto Stop mode only)
 #define DEAD_TIME_MS      150       // both H-bridge inputs off this long before any restart
 #define MASS_COMP_FULL_KG 20.0f     // load at which Mass Comp doubles the drive

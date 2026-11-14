@@ -91,7 +91,15 @@ All of these can be typed while it is running. `Save` keeps them.
 | Twitches now and then while holding level | Raise `Alpha` (0.95) or `LevelTol`. |
 | Stops slightly off level every time | Adjust `PitchOffset` / `RollOffset` (measure with a level), then `Save`. |
 
-Starting values: `Kp30 Ki20 Kd0 Alpha0.9 LevelTol0.2 MinSpeed50 MaxSpeed100`.
+Tuned values (no tire, 2026-11-13): `MinSpeed20 MaxSpeed255 Kp200 Ki5 Kd10
+Alpha0.6 LevelTol0.1`. 2-3° corrections take 1.7-1.9 s and settle within
+0.01-0.07°. About 0.35 s of that is mechanical slack before the platform starts
+moving, plus 0.3 s of "is it still level" at the end.
+
+Commissioning helpers: `JogLeft<pwm>` / `JogRight<pwm>` run one actuator for
+1 s. With `LevelDebugOn` you can see which way, and how far, each one moves.
+
+Keep each command line under 48 characters (`# ? line too long` otherwise).
 
 ## Other one-off calibrations
 

@@ -8,15 +8,17 @@ void settingsDefaults() {
   cfg.cal[0]      = 200000;     // placeholder - run CalA / CalB / CalC once
   cfg.cal[1]      = 200000;
   cfg.cal[2]      = 200000;
-  cfg.pitchOffset = 2.0;        // measured with a level
-  cfg.rollOffset  = 0.0;
-  cfg.minSpeed    = 50;
-  cfg.maxSpeed    = 100;
-  cfg.kp          = 30;         // starting values - tune on the machine
-  cfg.ki          = 20;
-  cfg.kd          = 0;
-  cfg.alpha       = 0.90;
-  cfg.levelTol    = 0.20;
+  cfg.pitchOffset = 1.52;       // set against a spirit level (2026-11-13)
+  cfg.rollOffset  = -0.30;
+  // Leveling, tuned on the machine with no tire (2026-11-13): 2-3 deg steps
+  // finish in 1.7-1.9 s (occasionally ~2.5 s) and settle within 0.01-0.07 deg.
+  cfg.minSpeed    = 20;         // both actuators still move at PWM 20 unloaded; 15 was no better
+  cfg.maxSpeed    = 255;
+  cfg.kp          = 200;
+  cfg.ki          = 5;
+  cfg.kd          = 10;         // brakes the approach; 20 was too much
+  cfg.alpha       = 0.60;
+  cfg.levelTol    = 0.10;
   cfg.laserOffset = 79.5;       // this servo's zero is ~80 deg off (82 pointed 2-3 deg CCW, 2026-11-13)
   cfg.testMass    = 5;
 }

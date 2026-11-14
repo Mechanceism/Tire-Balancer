@@ -71,7 +71,21 @@ To do on the machine:
 - [ ] Repeatability test: same wheel, 10 runs; then with known added weights
 - [ ] Decide result rounding from that data
 
+Leveling tuning (2026-11-13, no tire):
+
+- [x] Offsets set against a spirit level: PitchOffset 1.52, RollOffset -0.30
+- [x] Actuators move at PWM 20 unloaded -> MinSpeed 20 (was 50)
+- [x] MaxSpeed 255, Kp 200, Ki 5, Kd 10, Alpha 0.6, LevelTol 0.1:
+      2-3 deg steps done in 1.7-1.9 s (was 2.7-6.4 s), settle within 0.07 deg
+- [x] Samples that are not tilt (jolts, bad I2C reads) are skipped
+- [ ] Re-tune with a tire on, after load cell calibration. The old code
+      boosted the actuators by tire weight; Mass Comp does that now (up to
+      2x drive at 20 kg) - check it is enough near the end of travel.
+
 Ideas for later:
+
+- Fuse the gyro back in (complementary filter) so actuator jolts barely
+  move the angle estimate - V0.4 did this
 
 - Servo linearity table for the laser
 - Work out actuator length from the two MPUs to warn before end of stroke

@@ -634,11 +634,17 @@ static void setupExtraWidgets() {
   lv_label_set_text(weightPosLabel, "Weight:\nClip-on");
   lv_obj_add_event_cb(weightPosSwitch, WeightPosSwitch_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
-  // Debug tab: the old "Speed Curve Exp." slider is now the leveling PID gain
+  // Debug tab: the old "Speed Curve Exp." slider is now the leveling PID gain.
+  // Slider start values match the Nano's tuned defaults (Settings.ino), so
+  // pressing "Enter Speed" without moving them changes nothing.
   lv_label_set_text(ui_SpeedCurveSliderLabel, "Level Gain Kp");
-  lv_slider_set_range(ui_SpeedCurveSlider, 5, 100);
-  lv_slider_set_value(ui_SpeedCurveSlider, 30, LV_ANIM_OFF);
-  lv_label_set_text(ui_SpeedCurveValueLabel, "30");
+  lv_slider_set_range(ui_SpeedCurveSlider, 10, 400);
+  lv_slider_set_value(ui_SpeedCurveSlider, 200, LV_ANIM_OFF);
+  lv_label_set_text(ui_SpeedCurveValueLabel, "200");
+  lv_slider_set_value(ui_MinSpeedSlider, 20, LV_ANIM_OFF);
+  lv_label_set_text(ui_MinSpeedValueLabel, "20");
+  lv_slider_set_value(ui_MaxSpeedSlider, 255, LV_ANIM_OFF);
+  lv_label_set_text(ui_MaxSpeedValueLabel, "255");
 
   // Debug tab: these trim the Nano's saved offsets by up to +-1.0 deg
   lv_label_set_text(ui_PitchOffsetSliderLabel, "Pitch Trim (deg tenths)");

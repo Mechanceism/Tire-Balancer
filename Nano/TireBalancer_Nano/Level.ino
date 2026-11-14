@@ -25,6 +25,7 @@ static Actuator act[2] = {
 };
 
 static bool     filterSeeded = false;
+static uint8_t  spikeRun     = 0;
 static uint8_t  stableTicks  = 0;
 static uint8_t  staleTicks   = 0;
 static uint8_t  baseTicks    = 0;
@@ -233,6 +234,25 @@ void levelTick(uint32_t now, float dt) {
 
   float pitch = tiltDeg(ax);
   float roll  = tiltDeg(ay);
+
+  // Skip samples that are not tilt. The accelerometer measures gravity PLUS the
+  // platform's own acceleration: smooth actuator motion only adds ~0.02 g, but
+  // a jolt (slack taken up on a hard reversal) can add a lot for a moment.
+  // Skipped: an I2C read that timed out, a total far from 1 g (outside about
+  // 0.71-1.22 g), or a jump bigger than the platform can tilt in one tick.
+  // The last good angle is held; five in a row (0.1 s) is accepted as real.
+  bool bad = Wire.getWireTimeoutFlag();
+  Wire.clearWireTimeoutFlag();
+  float gSq = ((float)ax * ax + (float)ay * ay + (float)az * az) / (ACCEL_COUNTS_1G * ACCEL_COUNTS_1G);
+  if (gSq < 0.5f || gSq > 1.5f) bad = true;
+  if (filterSeeded && (fabs(pitch - pitchF) > SPIKE_DEG || fabs(roll - rollF) > SPIKE_DEG)) bad = true;
+  if (bad) {
+    if (rejectedSamples < 65535) rejectedSamples++;
+    if (++spikeRun < SPIKE_TICKS) return;      // keep the last good angle (and outputs) for this tick
+    filterSeeded = false;                      // persistent: accept it as the new position
+  }
+  spikeRun = 0;
+
   if (!filterSeeded) {
     pitchF = pitch;
     rollF  = roll;
