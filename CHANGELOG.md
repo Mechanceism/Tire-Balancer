@@ -43,9 +43,11 @@
   after every Balance. The wheel drawing shows those arm loads too.
 - **Load Cell Calibration** (Debug tab, above Find Reach, on the touch screen
   and the web page): Tare with empty arms, then each load cell with a known
-  weight typed in kg or lbs (follows the total weight unit). Touch screen: the
-  number pad asks for A, B, C in turn, with the leveling page showing
-  "Calibrating Load Cell A...". Web: a Tare row and a row per load cell with
+  weight typed in kg or lbs (follows the total weight unit). Touch screen: a
+  "Select which load cell to calibrate" screen (A 210 / B 90 / C 330, ticked
+  when done, any can be skipped; the first pick tares), a two-line number pad
+  per load cell, and the leveling page showing "Calibrating Load Cell A...".
+  Web: a Tare row and a row per load cell with
   Calibrate, then Cancel / Done. The new factors and their change are shown.
   Uses the Nano's Tare and CalA/B/C unchanged, so each load cell is saved as
   soon as it is done.

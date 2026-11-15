@@ -99,19 +99,22 @@ with **no tire** and a hand on the power switch.
 Done 2026-11-13 with the arms fitted (factors are the firmware defaults).
 Repeat with a weighed mass of 2-10 kg if the load cells or arms change.
 
-**From the screen:** Debug tab > **Load Cell Calibration** (above Find Reach).
-Remove everything from the arms and press Start: it tares, then asks for the
-weight on load cell A (210 deg), B (90 deg) and C (330 deg) in turn on the
-number pad (kg, or lbs if the total weight is shown in lbs). Put the weight on
-that arm only and press Enter; "Calibrating Load Cell A..." takes about a
-second. At the end it lists the new factors and how much each changed.
+**From the screen:** Debug tab > **Load Cell Calibration** (above Find Reach)
+opens "Select which load cell to calibrate": **A (210)**, **B (90)**,
+**C (330)**. The first pick asks for the arms to be empty and zeroes the scale.
+Then the number pad asks for the weight on that load cell (kg, or lbs if the
+total weight is shown in lbs); put the weight on that arm only and press
+Enter. "Calibrating Load Cell A..." takes about a second, then you are back at
+the selection with a tick on the ones done: pick the next one or skip it.
+**Done** (Cancel before any is done) lists the new factors and how much each
+changed. Cancel on the number pad or the loading page goes back to the
+selection.
 
 **From the web page:** the same button on the Debug tab opens a screen with
 Tare and a row per load cell (weight box + Calibrate), then Done.
 
-Each load cell is saved by the Nano as soon as it is calibrated, so Cancel
-(or the loading page's Cancel) stops the remaining ones; those already done
-stay. To calibrate one load cell only, do the Tare and that one, then Cancel.
+Each load cell is saved by the Nano as soon as it is calibrated; ending early
+leaves the ones not done as they were. Any of them can be done on its own.
 
 **By hand** (Serial Monitor, or the web console):
 

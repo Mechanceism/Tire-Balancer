@@ -1003,36 +1003,76 @@ static void calSummary(char *out, size_t len) {
   }
   if (!out[0]) snprintf(out, len, "No load cell was changed.");
 }
-// Stop: anything still measuring is cancelled, nothing more is calibrated.
+// ---- touch screen flow:
+//   Load Cell Calibration -> "Select which load cell to calibrate" [A] [B] [C]
+//   -> (first time only: arms empty? Tare) -> number pad for that load cell
+//   -> "Calibrating Load Cell A..." -> back to the selection, done ones ticked.
+// Any load cell can be skipped; Cancel on the pad or the loading page goes
+// back to the selection; its Cancel / Done button ends the calibration.
+static uint8_t   calPick = 0;               // load cell chosen on the selection screen
+static lv_obj_t *calSel = NULL;             // the selection screen (full screen)
+static lv_obj_t *calSelBtnLbl[3];
+static lv_obj_t *calSelEndLbl = NULL;
+
+static void calSelOpen() {
+  for (uint8_t i = 0; i < 3; i++) {
+    bool done = calDoneMask & (1 << i);
+    lv_label_set_text_fmt(calSelBtnLbl[i], "%c\n%d deg%s", CAL_NAME[i], CAL_DEG[i], done ? "\n" LV_SYMBOL_OK : "");
+  }
+  lv_label_set_text(calSelEndLbl, calDoneMask ? "Done" : "Cancel");
+  lv_obj_clear_flag(calSel, LV_OBJ_FLAG_HIDDEN);
+}
+static void calHideAll() {
+  if (calSel) lv_obj_add_flag(calSel, LV_OBJ_FLAG_HIDDEN);
+  if (calPad) lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
+}
+
+// End the calibration (anything still measuring is cancelled).
+// Also used by the web page's Cancel and the timeout.
 void calStop() {
   if (calJob) nanoSendNow("BalanceCancel");
   bool touch = calTouch;
   calJob = 0;
   calTouch = false;
   calSeq++;
-  if (calPad) lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
+  calHideAll();
   if (calDoneMask) webCalChanged();             // read the new factors back
   if (touch) {
     backToOptionMenu();
-    char s[160];
-    calSummary(s, sizeof(s));
-    showMessage("Calibration stopped", s);
+    if (calDoneMask) {
+      char s[160];
+      calSummary(s, sizeof(s));
+      showMessage("Load cells calibrated", s);
+    }
   }
 }
+// Touch flow: stop the current step and go back to the selection screen
+static void calBackToSelect() {
+  if (calJob) nanoSendNow("BalanceCancel");
+  calJob = 0;
+  calSeq++;
+  if (calPad) lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
+  backToOptionMenu();
+  calSelOpen();
+}
 
-static void calPadShow(const char *note) {
-  uint8_t i = 0;
-  while (i < 3 && (calDoneMask & (1 << i))) i++;      // the next load cell not done yet
-  if (i > 2) i = 2;
-  char b[160];
-  snprintf(b, sizeof(b), "Add weight to Load Cell %c (%d deg)\nWeight amount (%s): #2196f3 %s#\n%s",
-           CAL_NAME[i], CAL_DEG[i], totalWeightInLbs() ? "lbs" : "kg",
-           calPadText[0] ? calPadText : "_", note ? note : "Put the weight on that arm only, then Enter.");
+// Two lines: what to do, and the weight typed so far (a red hint instead
+// when Enter was pressed without a weight)
+static void calPadShow(bool warn) {
+  char b[96];
+  snprintf(b, sizeof(b), "Add weight to Load Cell %c (%d deg)\nWeight amount (%s): %s",
+           CAL_NAME[calPick], CAL_DEG[calPick], totalWeightInLbs() ? "lbs" : "kg",
+           warn ? "#e53935 type it first#" : "");
+  if (!warn) {
+    size_t n = strlen(b);
+    snprintf(b + n, sizeof(b) - n, "#2196f3 %s#", calPadText[0] ? calPadText : "_");
+  }
   lv_label_set_text(calPadHead, b);
 }
 static void calPadOpen() {
   calPadText[0] = 0;
-  calPadShow(NULL);
+  calPadShow(false);
+  lv_obj_add_flag(calSel, LV_OBJ_FLAG_HIDDEN);
   lv_obj_clear_flag(calPad, LV_OBJ_FLAG_HIDDEN);
 }
 static void calPadKey_event_cb(lv_event_t * e) {
@@ -1040,14 +1080,12 @@ static void calPadKey_event_cb(lv_event_t * e) {
   const char *k = lv_btnmatrix_get_btn_text(m, lv_btnmatrix_get_selected_btn(m));
   if (!k) return;
   size_t len = strlen(calPadText);
-  if (!strcmp(k, "Cancel")) { calStop(); return; }
+  if (!strcmp(k, "Cancel")) { calBackToSelect(); return; }
   if (!strcmp(k, LV_SYMBOL_BACKSPACE)) { if (len) calPadText[len - 1] = 0; }
   else if (!strcmp(k, "Enter")) {
     float v = atof(calPadText);
     float kg = totalWeightInLbs() ? v / 2.20462f : v;
-    uint8_t i = 0;
-    while (i < 3 && (calDoneMask & (1 << i))) i++;
-    if (!calCell(i, kg)) { calPadShow("Type the weight first (more than 0.05 kg)."); return; }
+    if (!calCell(calPick, kg)) { calPadShow(true); return; }
     lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
     return;
   }
@@ -1055,7 +1093,30 @@ static void calPadKey_event_cb(lv_event_t * e) {
     calPadText[len] = k[0];
     calPadText[len + 1] = 0;
   }
-  calPadShow(NULL);
+  calPadShow(false);
+}
+
+// First pick: the scale is zeroed with the arms empty
+static void calTareConfirm_event_cb(lv_event_t * e) {
+  lv_obj_t *mb = lv_event_get_current_target(e);
+  const char *t = lv_msgbox_get_active_btn_text(mb);
+  bool start = t && !strcmp(t, "Start");
+  lv_msgbox_close_async(mb);
+  if (start) { lv_obj_add_flag(calSel, LV_OBJ_FLAG_HIDDEN); calTare(); }
+}
+static void calSelPick_event_cb(lv_event_t * e) {
+  if (calJob) return;
+  calPick = (uint8_t)(intptr_t)lv_event_get_user_data(e);
+  if (calTared) { calPadOpen(); return; }
+  static const char *btns[] = {"Start", "Cancel", ""};
+  lv_obj_t *mb = lv_msgbox_create(NULL, "Arms empty?",
+                                  "Remove everything from the arms first:\n"
+                                  "the scale is zeroed before calibrating.", btns, false);
+  lv_obj_center(mb);
+  lv_obj_add_event_cb(mb, calTareConfirm_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+}
+static void calSelEnd_event_cb(lv_event_t * e) {
+  calStop();
 }
 
 // Called from handleNanoLine
@@ -1076,42 +1137,77 @@ static void calOnLine(const char *line) {             // "# CalA 100129.3" (the 
   calDoneMask |= 1 << i;
   calJob = 0;
   calSeq++;
-  if (!calTouch) return;
-  if (calDoneMask != 7) { calPadOpen(); return; }
-  calTouch = false;                                   // all three done
-  webCalChanged();
-  backToOptionMenu();
-  char s[160];
-  calSummary(s, sizeof(s));
-  showMessage("Load cells calibrated", s);
+  if (calTouch) {
+    char t[32];
+    snprintf(t, sizeof(t), "Load cell %c saved", CAL_NAME[i]);
+    statusNote(t);
+    backToOptionMenu();
+    calSelOpen();
+  }
 }
 static void calOnErr() {                              // the Err itself is shown as usual
   if (!calJob && !calTouch) return;
   calJob = 0;
-  calTouch = false;
   calSeq++;
   if (calPad) lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
-  if (calDoneMask) webCalChanged();
+  if (calTouch) calSelOpen();                         // the error message pops up over it
 }
 
-// Debug tab button: confirm, then Tare
-static void calConfirm_event_cb(lv_event_t * e) {
-  lv_obj_t *mb = lv_event_get_current_target(e);
-  const char *t = lv_msgbox_get_active_btn_text(mb);
-  bool start = t && !strcmp(t, "Start");
-  lv_msgbox_close_async(mb);
-  if (!start) return;
-  calStart(true);
-  calTare();
-}
+// Debug tab button: start with the selection screen
 static void calButton_event_cb(lv_event_t * e) {
-  static const char *btns[] = {"Start", "Cancel", ""};
-  lv_obj_t *mb = lv_msgbox_create(NULL, "Load Cell Calibration",
-                                  "Remove everything from the arms. The scale is\n"
-                                  "zeroed first, then each load cell is calibrated\n"
-                                  "with a known weight. Each one is saved when done.", btns, false);
-  lv_obj_center(mb);
-  lv_obj_add_event_cb(mb, calConfirm_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+  calStart(true);
+  calSelOpen();
+}
+
+// Built in setupExtraWidgets(): the selection screen and the number pad
+static void calSetupWidgets() {
+  calSel = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(calSel, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_style_radius(calSel, 0, 0);
+  lv_obj_clear_flag(calSel, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *t = lv_label_create(calSel);
+  lv_label_set_text(t, "Select which load cell to calibrate");
+  lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 6);
+  for (uint8_t i = 0; i < 3; i++) {
+    lv_obj_t *b = lv_btn_create(calSel);
+    lv_obj_set_size(b, 88, 96);
+    lv_obj_align(b, LV_ALIGN_CENTER, (i - 1) * 100, -6);
+    lv_obj_add_event_cb(b, calSelPick_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    calSelBtnLbl[i] = lv_label_create(b);
+    lv_obj_set_style_text_align(calSelBtnLbl[i], LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(calSelBtnLbl[i]);
+  }
+  lv_obj_t *end = lv_btn_create(calSel);
+  lv_obj_set_size(end, 140, 44);
+  lv_obj_align(end, LV_ALIGN_BOTTOM_MID, 0, -2);
+  lv_obj_set_style_bg_color(end, lv_palette_main(LV_PALETTE_GREY), 0);
+  lv_obj_add_event_cb(end, calSelEnd_event_cb, LV_EVENT_CLICKED, NULL);
+  calSelEndLbl = lv_label_create(end);
+  lv_obj_center(calSelEndLbl);
+  lv_obj_add_flag(calSel, LV_OBJ_FLAG_HIDDEN);
+
+  static const char *calMap[] = {"1", "2", "3", LV_SYMBOL_BACKSPACE, "\n",
+                                 "4", "5", "6", ".", "\n",
+                                 "7", "8", "9", "Cancel", "\n",
+                                 "0", "Enter", ""};
+  calPad = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(calPad, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_style_pad_all(calPad, 4, 0);
+  lv_obj_set_style_radius(calPad, 0, 0);
+  lv_obj_clear_flag(calPad, LV_OBJ_FLAG_SCROLLABLE);
+  calPadHead = lv_label_create(calPad);
+  lv_label_set_recolor(calPadHead, true);
+  lv_obj_set_style_text_align(calPadHead, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_width(calPadHead, LV_PCT(100));
+  lv_obj_align(calPadHead, LV_ALIGN_TOP_MID, 0, 2);
+  lv_obj_t *cpad = lv_btnmatrix_create(calPad);
+  lv_btnmatrix_set_map(cpad, calMap);
+  lv_btnmatrix_set_btn_width(cpad, 13, 3);                // "Enter" is three keys wide
+  lv_btnmatrix_set_btn_ctrl_all(cpad, LV_BTNMATRIX_CTRL_NO_REPEAT);
+  lv_obj_set_size(cpad, LV_PCT(100), 185);
+  lv_obj_align(cpad, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_add_event_cb(cpad, calPadKey_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+  lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
 }
 
 // ============================================================ UI event handlers
@@ -1122,7 +1218,7 @@ void LevelButton_event_handler(lv_event_t * e) {
 }
 void LevelCancelButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  if (calTouch) { calStop(); return; }               // the loading page was showing a calibration step
+  if (calTouch) { calBackToSelect(); return; }       // the loading page was showing a calibration step
   doLevelCancel();
 }
 
@@ -1501,29 +1597,7 @@ static void setupExtraWidgets() {
   lv_label_set_text(calLbl, "Load Cell Calibration");
   lv_obj_center(calLbl);
 
-  // Load cell calibration number pad (full screen, hidden until needed)
-  static const char *calMap[] = {"1", "2", "3", LV_SYMBOL_BACKSPACE, "\n",
-                                 "4", "5", "6", ".", "\n",
-                                 "7", "8", "9", "Cancel", "\n",
-                                 "0", "Enter", ""};
-  calPad = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(calPad, LV_PCT(100), LV_PCT(100));
-  lv_obj_set_style_pad_all(calPad, 4, 0);
-  lv_obj_set_style_radius(calPad, 0, 0);
-  lv_obj_clear_flag(calPad, LV_OBJ_FLAG_SCROLLABLE);
-  calPadHead = lv_label_create(calPad);
-  lv_label_set_recolor(calPadHead, true);
-  lv_obj_set_style_text_align(calPadHead, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_width(calPadHead, LV_PCT(100));
-  lv_obj_align(calPadHead, LV_ALIGN_TOP_MID, 0, 0);
-  lv_obj_t *cpad = lv_btnmatrix_create(calPad);
-  lv_btnmatrix_set_map(cpad, calMap);
-  lv_btnmatrix_set_btn_width(cpad, 13, 3);                // "Enter" is three keys wide
-  lv_btnmatrix_set_btn_ctrl_all(cpad, LV_BTNMATRIX_CTRL_NO_REPEAT);
-  lv_obj_set_size(cpad, LV_PCT(100), 175);
-  lv_obj_align(cpad, LV_ALIGN_BOTTOM_MID, 0, 0);
-  lv_obj_add_event_cb(cpad, calPadKey_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-  lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
+  calSetupWidgets();                                       // its selection screen and number pad
 
   // Debug tab: Find Reach button, under Load Cell Calibration
   lv_obj_t *reachBtn = lv_btn_create(ui_Debug_Tab);
