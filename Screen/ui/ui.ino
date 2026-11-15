@@ -39,6 +39,7 @@
 #define LINK_TIMEOUT_MS    5000     // nothing heard for this long = link down
 #define SEND_GAP_MS        30       // pause between queued commands (the Nano's buffer is small)
 #define LEVEL_TIMEOUT_MS   130000   // a little longer than the Nano's own limit
+#define REACH_TIMEOUT_MS   200000   // FindReach: 4 end-stop legs (up to 40 s each) + leveling
 #define BALANCE_TIMEOUT_MS 8000
 #define TARE_TIMEOUT_MS    5000
 
@@ -96,6 +97,7 @@ bool  tireEntered = false;
 
 enum Waiting { WAIT_NONE, WAIT_LEVEL, WAIT_BALANCE, WAIT_TARE };
 Waiting  waiting      = WAIT_NONE;
+bool     reachRunning = false;    // the leveling page is showing a FindReach run
 uint32_t waitDeadline = 0;        // 0 = wait forever (leveling with Auto Stop off)
 
 bool     linkUp       = false;
@@ -582,7 +584,8 @@ static void handleNanoLine(char *line) {
     if (waiting == WAIT_LEVEL) {
       waiting = WAIT_NONE;
       backToOptionMenu();
-      statusNote("Level done");
+      statusNote(reachRunning ? "Limits saved, level" : "Level done");
+      reachRunning = false;
     }
   }
   else if (!strncmp(line, "TareCompleted", 13)) {
@@ -609,6 +612,7 @@ static void handleNanoLine(char *line) {
   else if (!strncmp(line, "Err ", 4)) {
     nanoSend("Ack");
     waiting = WAIT_NONE;
+    reachRunning = false;
     backToOptionMenu();
     showMessage("Error", errorText(line + 4));
   }
@@ -706,6 +710,8 @@ static void linkTick(uint32_t now) {
 // Buttons
 void LevelButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+  reachRunning = false;
+  lv_label_set_text(ui_LevelLoadingLabel, "Leveling...");
   bool autoStop = isChecked(ui_AutoStopCheckbox);
   nanoSend(autoStop ? "AutoStopOn" : "AutoStopOff");
   nanoSend("Level");
@@ -714,7 +720,31 @@ void LevelButton_event_handler(lv_event_t * e) {
 void LevelCancelButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
   waiting = WAIT_NONE;
-  nanoSendNow("LevelCancel");
+  nanoSendNow(reachRunning ? "Stop" : "LevelCancel");    // LevelCancel does not stop FindReach
+  reachRunning = false;
+}
+
+// ---- Debug tab: Find Reach (platform limits), with a confirmation first
+static void reachConfirm_event_cb(lv_event_t * e) {
+  lv_obj_t *mb = lv_event_get_current_target(e);
+  const char *t = lv_msgbox_get_active_btn_text(mb);
+  bool start = t && !strcmp(t, "Start");
+  lv_msgbox_close_async(mb);
+  if (!start) return;
+  reachRunning = true;
+  lv_label_set_text(ui_LevelLoadingLabel, "Testing boundaries...");
+  lv_scr_load_anim(ui_LevelLoadingMenu, LV_SCR_LOAD_ANIM_FADE_ON, 250, 0, false);
+  nanoSend("FindReach");
+  startWaiting(WAIT_LEVEL, REACH_TIMEOUT_MS);        // it ends by leveling: LevelCompleted
+}
+
+static void reachButton_event_cb(lv_event_t * e) {
+  static const char *btns[] = {"Start", "Cancel", ""};
+  lv_obj_t *mb = lv_msgbox_create(NULL, "Find platform limits",
+                                  "The platform tilts up to 25 deg to each limit, then levels.\n"
+                                  "Remove the tire first.", btns, false);
+  lv_obj_center(mb);
+  lv_obj_add_event_cb(mb, reachConfirm_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 }
 void CalibrateButton_event_handler(lv_event_t * e) {        // the "Tare" button
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
@@ -996,6 +1026,16 @@ static void setupExtraWidgets() {
   // Debug tab: these trim the Nano's saved offsets by up to +-1.0 deg
   lv_label_set_text(ui_PitchOffsetSliderLabel, "Pitch Trim (deg tenths)");
   lv_label_set_text(ui_RollOffsetSliderLabel, "Roll Trim (deg tenths)");
+
+  // Debug tab: Find Reach button, below the existing controls
+  lv_obj_t *reachBtn = lv_btn_create(ui_Debug_Tab);
+  lv_obj_set_size(reachBtn, 140, 45);
+  lv_obj_set_align(reachBtn, LV_ALIGN_CENTER);
+  lv_obj_set_y(reachBtn, lv_pct(185));
+  lv_obj_add_event_cb(reachBtn, reachButton_event_cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_t *reachLbl = lv_label_create(reachBtn);
+  lv_label_set_text(reachLbl, "Find Reach");
+  lv_obj_center(reachLbl);
 
   // Result panel starts empty instead of showing placeholder text
   refreshResults();
