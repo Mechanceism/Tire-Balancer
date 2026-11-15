@@ -3,10 +3,24 @@
 9600 baud, 8N1, plain text, one line per message. The same commands work typed
 into Serial Monitor on the Nano's USB port (line ending: Newline).
 
-The command names live in exactly two places, so a rename is a two-line change:
+The command names live in these places, and **all of them must be changed
+together** (in the same commit) when a command is added, renamed or removed:
 
 - Nano: `runCommand()` in [Protocol.ino](../Nano/TireBalancer_Nano/Protocol.ino)
-- Screen: the `nanoSend(...)` calls in [ui.ino](../Screen/ui/ui.ino)
+- Screen: the `nanoSend(...)` calls in [ui.ino](../Screen/ui/ui.ino) and
+  [Web.ino](../Screen/ui/Web.ino)
+- **This page.**
+- **The web page's console**, which lists every command on this page with a
+  short description: `CMDS` in [WebPage.h](../Screen/ui/WebPage.h) (same
+  sections, names and order as the tables below). Read-only commands that the
+  console may send without the safety tick are listed twice, as `SAFE` in
+  WebPage.h and `SAFE_COMMANDS` in Web.ino; keep those two identical.
+
+The web page also reads some of the Nano's output by its exact text: the
+`Status` lines (Web.ino `STATUS_KEY`, WebPage.h `statusRows()`), the debug
+lines `# P:`, `# T:`, `# W:` (WebPage.h `RE_L`, `RE_S`, `RE_W`; Web.ino
+balance capture) and `# CalA <factor>` (ui.ino `calOnLine()`). Changing any of
+those formats on the Nano means changing the screen too.
 
 ## Format
 
@@ -31,7 +45,9 @@ most) until the screen answers `Ack`. In Serial Monitor you will simply see the
 line a few times; type `Ack` to stop it.
 
 **Lines starting with `#`** are information for a human (command echoes, debug
-streams). The screen ignores them.
+streams). The touch screen ignores them; the web page parses the debug
+streams, `Status` and calibration results (see above) and shows them all in
+its console.
 
 ## Commands: screen → Nano
 

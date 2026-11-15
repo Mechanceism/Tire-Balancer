@@ -1,5 +1,71 @@
 # Change Log
 
+## Screen V0.5.0 (2026-11-14) - web page, load cell calibration
+
+The screen now makes its own WiFi hotspot and serves a web page that does
+everything the touch screen does, and more. Tested on a phone with the machine.
+The **Nano is unchanged (V0.7.0)**: the page uses the same commands, debug
+lines and events as the touch screen.
+
+Web page (open WiFi "TireBalancer", http://192.168.4.1)
+- Phone-first page embedded in the sketch (`Screen/ui/WebPage.h`, plain
+  HTML/CSS/JavaScript), served by the ESP32 core's own WebServer and
+  DNSServer (`Screen/ui/Web.ino`); no extra libraries. Every web address
+  leads to it, so phones offer it as a sign-in page.
+- The same tabs as the touch screen (Level, Tire Info, Balance, Debug), kept in
+  sync both ways within a second; anything started from a phone also shows the
+  touch screen's loading page. Tire sizes typed with the phone keyboard
+  (format detected), live check of what the size means.
+- **STOP** always at the top. **Safety tick** ("I can see the machine and it
+  is clear") required for anything that moves the platform or switches the
+  laser on, checked by the screen too; clears after 5 minutes unused or when
+  the WiFi drops.
+- **Level tab live view** (starts Off): *Leveling* - bubble level, pitch/roll,
+  frame tilt, reach margin badge, actuator drive bars, 20 s charts of platform
+  angle (tolerance band) and actuator drive with Level start/finish marks, run
+  times, Pause, CSV. *Sensors* - platform and frame bubble levels, readings,
+  and a **reach map** (allowed frame tilt, the Level start line, the frame now,
+  margin computed like the Nano's).
+- **Balance tab**: the wheel drawn from above, to scale, with the arms, where
+  the weight goes, the centre of gravity, and live load cells per arm.
+  **Balance report** with the phone's date and time, the result, tire, weight
+  type and radius, centre of gravity, each arm's load and the platform's level
+  right after the Balance, Mass Comp / Test Weight and firmware: **Save CSV**
+  or **Print / Save PDF**. Nothing is stored on the machine.
+- **Console**: live log of every line to and from the Nano (with times, Save),
+  a command box, and every command from docs/Protocol.md with its
+  description. **Info**: link counters, versions, memory, and the Nano's
+  settings from its last Status, one per row.
+- The Nano's debug streams are switched on only while a page shows them and
+  off ~3 s after; the screen reads Status at link up and after Find Reach /
+  calibration.
+
+Touch screen and both
+- **Load Cell Calibration** (Debug tab, above Find Reach). Touch screen:
+  "Select which load cell to calibrate" (A 210 / B 90 / C 330, ticked when
+  done, any can be skipped; the first pick tares with empty arms), a two-line
+  number pad for the weight (kg or lbs, following the total weight unit), and
+  "Calibrating Load Cell A..." on the leveling page; Done shows the new factors
+  and their change. Web: a Tare row and a row per load cell with Calibrate,
+  then Cancel / Done. Uses the Nano's Tare and CalA/B/C, so each load cell is
+  saved as soon as it is done.
+- **Laser auto-off** 30 s after a Balance unless the Laser button (or Manual
+  Laser) is used first; the web page shows the countdown.
+- **Level Gain Kp slider removed** (touch and web): the gains are tuned once
+  and kept by the Nano; the screen no longer sends or stores `Kp`. Rows below
+  moved up; Enter Speed is 2/3 as tall to match the two speed rows.
+- The touch handlers became shared `do...()` actions used by both screens;
+  screen changes from code all go through the deferred `requestScreen()`.
+- Debug tab bottom: how to open the web page and how many phones are connected.
+
+Build and repo
+- **Partition scheme: Huge APP (3MB No OTA/1MB SPIFFS)** (program ~1.35 MB,
+  over the default 1.25 MB). `Screen/ui/partitions.csv` sets the layout; saved
+  settings and Recents carry over.
+- **Nano libraries bundled** in `Nano/libraries` (MPU6050 1.4.3, HX711 0.6.0)
+  like the screen's: Sketchbook location = `Nano` builds without installing
+  anything. `Tools/build.ps1` builds each board with only the repo's libraries.
+
 ## Nano V0.7.0 + Screen V0.4.0 (2026-11-14) - boards linked, tire tested
 
 The boards now talk directly through the level converter, and the machine was

@@ -11,9 +11,19 @@
   A few things are added or re-labelled in code in setupExtraWidgets() so the
   SquareLine project did not have to change.
 
+  The same controls (and more) are on a web page: the screen makes its own
+  open WiFi hotspot "TireBalancer" and serves the page at 192.168.4.1
+  (Web.ino, WebPage.h).
+
   Before uploading: File > Preferences > Sketchbook location = the "Screen"
-  folder (the parent of this "ui" folder). See docs/Setup.md.
+  folder (the parent of this "ui" folder), and Tools > Partition Scheme >
+  "Huge APP (3MB No OTA/1MB SPIFFS)". See docs/Setup.md.
 */
+// Web page (Web.ino): the screen's own WiFi hotspot. These come before
+// TFT_eSPI.h, which includes FS.h in a way that hides "FS" from WebServer.h.
+#include <WiFi.h>
+#include <WebServer.h>
+#include <DNSServer.h>
 #include <lvgl.h>
 #include <TFT_eSPI.h>
 #include <ui.h>
@@ -21,7 +31,7 @@
 #include <stdarg.h>
 #include <Preferences.h>         // settings kept in the ESP32's flash (NVS)
 
-#define SCREEN_FW_VERSION "0.4.0"
+#define SCREEN_FW_VERSION "0.5.0"
 
 // ------------------------------------------------------------ Nano link
 // The Nano link uses IO35 (RX) and IO22 (TX), NOT the 4-pin serial
@@ -43,6 +53,7 @@
 #define REACH_TIMEOUT_MS   200000   // FindReach: 4 end-stop legs (up to 40 s each) + leveling
 #define BALANCE_TIMEOUT_MS 8000
 #define TARE_TIMEOUT_MS    5000
+#define LASER_AUTO_OFF_MS  30000    // the laser goes off this long after a Balance, unless the Laser button is pressed
 
 // ------------------------------------------------------------ balance weight position
 // The tire code gives the rim's bead seat diameter. The weight does not sit
@@ -66,7 +77,7 @@ struct TireSize { float widthMm, sideMm, rimMm; };
 // tuned on the machine, 2026-11-14). Manual Laser and Test Weight are not kept.
 struct ScreenPrefs {
   int16_t pitchTrim, rollTrim;           // tenths of a degree
-  int16_t minSpeed, maxSpeed, kp;        // as last sent with Enter Speed
+  int16_t minSpeed, maxSpeed;            // as last sent with Enter Speed
   bool    massComp, autoStop;
   bool    grams, lbs;                    // units: added weight in g, total weight in lbs
   bool    stickOn;                       // Tire Info: Stick-on (else Clip-on)
@@ -111,6 +122,18 @@ enum Waiting { WAIT_NONE, WAIT_LEVEL, WAIT_BALANCE, WAIT_TARE };
 Waiting  waiting      = WAIT_NONE;
 bool     reachRunning = false;    // the leveling page is showing a FindReach run
 uint32_t waitDeadline = 0;        // 0 = wait forever (leveling with Auto Stop off)
+uint32_t laserAutoOffAt = 0;      // when to switch the laser off after a Balance (0 = not planned)
+
+// Load cell calibration (see "load cell calibration" below)
+uint8_t  calJob      = 0;            // running on the Nano: 0 nothing, 1 Tare, 2..4 Cal A..C
+bool     calTared    = false;        // tared in this calibration
+uint8_t  calDoneMask = 0;            // load cells calibrated (bit 0 = A)
+float    calNew[3]   = {0, 0, 0};
+float    calOld[3]   = {0, 0, 0};    // before this calibration (from Status), if known
+bool     calHaveOld  = false;
+bool     calTouch    = false;        // the touch screen flow is running
+uint32_t calDeadline = 0;
+uint32_t calSeq      = 0;            // changes with every step, for the web page
 
 bool     linkUp       = false;
 uint32_t lastHeardMs  = 0;
@@ -132,13 +155,18 @@ uint32_t lastSliderSendMs = 0;
 
 lv_obj_t *statusLabel   = NULL;   // bottom-left corner, on every screen
 lv_obj_t *messageBox    = NULL;
+lv_obj_t *restoreBtn   = NULL;   // Debug tab: Restore Factory Defaults (the WiFi info goes under it)
+lv_obj_t *calPad       = NULL;   // load cell calibration: full-screen number pad
+lv_obj_t *calPadHead   = NULL;   //   its title and the value typed so far
+char      calPadText[8] = "";
 lv_obj_t *weightPosSw  = NULL;   // Tire Info: Clip-on (off) / Stick-on (on)
 lv_obj_t *tireFmtDd    = NULL;   // Tire Info: size format
 lv_obj_t *tireSizeLbl  = NULL;   // Tire Info: the size entered (tap to edit)
 lv_obj_t *tireResult   = NULL;   // Tire Info: what the size means
 lv_obj_t *tirePad      = NULL;   // full-screen number pad
 lv_obj_t *tirePadHead  = NULL;   // number pad: template with the digits typed so far
-char      tireText[32] = "";     // the size as entered, e.g. "4.80-12"
+char      tireText[32] = "";     // the size in the size box, e.g. "4.80-12"
+char      tireEnteredText[32] = "";   // the size last sent with Enter
 uint32_t  statusNoteUntil = 0;
 
 /*Don't forget to set Sketchbook location in File/Preferences to the path of your UI project (the parent foder of this INO file)*/
@@ -266,10 +294,17 @@ static void nanoWriteLine(const char *cmd) {
   for (const char *p = cmd; *p; p++) x ^= (uint8_t)*p;
   NanoSerial.printf("%s*%02X\n", cmd, x);
   Serial.printf("> %s\n", cmd);                       // USB log: everything sent to the Nano
+  webLog('>', cmd);
   lastSendMs = millis();
 }
 
-// Queue a command, printf style: nanoSend("Kp%d", 30);
+// "! ..." line in the USB log and the web console: link events and the like
+void logEvent(const char *text) {
+  Serial.printf("! %s\n", text);
+  webLog('!', text);
+}
+
+// Queue a command, printf style: nanoSend("MinSpeed%d", 20);
 void nanoSend(const char *fmt, ...) {
   if (txqCount >= TXQ_SIZE) return;                  // queue full: drop (should never happen)
   va_list args;
@@ -321,6 +356,7 @@ static bool isChecked(lv_obj_t *obj) {
 void statusNote(const char *text) {
   lv_label_set_text(statusLabel, text);
   statusNoteUntil = millis() + 3000;
+  webNote(text);
 }
 
 // While the link is down the counters tell you why:
@@ -350,24 +386,30 @@ void showMessage(const char *title, const char *text) {
   messageBox = lv_msgbox_create(NULL, title, text, NULL, true);
   lv_obj_center(messageBox);
   lv_obj_add_event_cb(messageBox, messageBoxDeleted, LV_EVENT_DELETE, NULL);
+  webMessage(title, text);
 }
 
-// Going back to the menu is only requested here and done in loop() once no
-// screen animation is running: starting a screen fade while another one is
-// still running crashed the ESP32 (an Err arriving during the 0.25 s fade to
-// the leveling page restarted the screen).
-static bool backToMenuPending = false;
+// Screen changes from code (Nano events, the web page) are only requested
+// here and done in loop() once no screen animation is running: starting a
+// screen fade while another one is still running crashed the ESP32 (an Err
+// arriving during the 0.25 s fade to the leveling page restarted the screen).
+static lv_obj_t *pendingScreen = NULL;
+
+static void requestScreen(lv_obj_t *scr) {
+  pendingScreen = scr;                              // the newest request wins
+}
 
 static void backToOptionMenu() {
-  backToMenuPending = true;
+  requestScreen(ui_OptionMenu);
 }
 
 static void screenTick() {
-  if (!backToMenuPending) return;
+  if (!pendingScreen) return;
   lv_disp_t *d = lv_disp_get_default();
   if (d->scr_to_load) return;                       // a screen change is still animating
-  backToMenuPending = false;
-  if (lv_scr_act() != ui_OptionMenu) lv_scr_load_anim(ui_OptionMenu, LV_SCR_LOAD_ANIM_FADE_ON, 250, 0, false);
+  lv_obj_t *scr = pendingScreen;
+  pendingScreen = NULL;
+  if (lv_scr_act() != scr) lv_scr_load_anim(scr, LV_SCR_LOAD_ANIM_FADE_ON, 250, 0, false);
 }
 
 static void startWaiting(Waiting what, uint32_t timeoutMs) {
@@ -488,9 +530,9 @@ static void sendSwitches() {
 }
 
 // ---- settings kept in the ESP32's flash
-static const ScreenPrefs PREF_DEFAULTS = {0, 0, 20, 150, 300, true, true, false, false, false};
+static const ScreenPrefs PREF_DEFAULTS = {0, 0, 20, 150, true, true, false, false, false};
 static Preferences prefs;
-static int16_t  enteredMin = 20, enteredMax = 150, enteredKp = 300;   // last Enter Speed
+static int16_t  enteredMin = 20, enteredMax = 150;   // last Enter Speed
 static uint32_t prefsDirtyAt = 0;
 
 static void setChecked(lv_obj_t *o, bool on) {
@@ -508,7 +550,6 @@ static void prefsLoad(ScreenPrefs &p) {
   p.rollTrim  = prefs.getShort("rt", d.rollTrim);
   p.minSpeed  = prefs.getShort("min", d.minSpeed);
   p.maxSpeed  = prefs.getShort("max", d.maxSpeed);
-  p.kp        = prefs.getShort("kp", d.kp);
   p.massComp  = prefs.getBool("mc", d.massComp);
   p.autoStop  = prefs.getBool("as", d.autoStop);
   p.grams     = prefs.getBool("g", d.grams);
@@ -523,10 +564,8 @@ static void prefsApply(const ScreenPrefs &p) {
   setSlider(ui_RollOffsetSlider, ui_RollOffsetValueLabel, p.rollTrim);
   setSlider(ui_MinSpeedSlider, ui_MinSpeedValueLabel, p.minSpeed);
   setSlider(ui_MaxSpeedSlider, ui_MaxSpeedValueLabel, p.maxSpeed);
-  setSlider(ui_SpeedCurveSlider, ui_SpeedCurveValueLabel, p.kp);
   enteredMin = p.minSpeed;
   enteredMax = p.maxSpeed;
-  enteredKp  = p.kp;
   setChecked(ui_MassCompSwitch, p.massComp);
   setChecked(ui_AutoStopCheckbox, p.autoStop);
   setChecked(ui_TestWeightSwitch1, p.grams);
@@ -543,14 +582,13 @@ static void prefsWriteNow() {
   prefs.putShort("rt", lv_slider_get_value(ui_RollOffsetSlider));
   prefs.putShort("min", enteredMin);
   prefs.putShort("max", enteredMax);
-  prefs.putShort("kp", enteredKp);
   prefs.putBool("mc", isChecked(ui_MassCompSwitch));
   prefs.putBool("as", isChecked(ui_AutoStopCheckbox));
   prefs.putBool("g", isChecked(ui_TestWeightSwitch1));
   prefs.putBool("lb", isChecked(ui_TestWeightSwitch2));
   prefs.putBool("so", isChecked(weightPosSw));
   prefs.end();
-  Serial.println("! settings saved");
+  logEvent("settings saved");
 }
 static void prefsDirty() { prefsDirtyAt = millis() | 1; }
 static void prefsTick(uint32_t now) {
@@ -563,7 +601,6 @@ static void syncNano() {
   sendSwitches();
   nanoSend("MinSpeed%d", enteredMin);
   nanoSend("MaxSpeed%d", enteredMax);
-  nanoSend("Kp%d", enteredKp);
   nanoSend("PitchTrim%.1f", lv_slider_get_value(ui_PitchOffsetSlider) / 10.0f);
   nanoSend("RollTrim%.1f", lv_slider_get_value(ui_RollOffsetSlider) / 10.0f);
   nanoSend("LaserAngle%d", (int)lv_slider_get_value(ui_ManualLaserAngleSlider));
@@ -600,6 +637,7 @@ static bool findValue(const char *line, const char *key, float &value) {
 
 static void handleNanoLine(char *line) {
   Serial.printf("< %s\n", line);                     // USB log: everything heard from the Nano
+  webLog('<', line);
 
   // Our own commands coming back means RX hears TX: on a level converter
   // this happens when its LV pin is not on 3.3 V (the channels' pull-ups
@@ -637,12 +675,15 @@ static void handleNanoLine(char *line) {
   }
 
   lastHeardMs = millis();
+  webNanoLine(line);                                 // picks up the Nano's version
+  calOnLine(line);                                   // load cell calibration results
   bool wasUp = linkUp;
   if (!linkUp) {
     linkUp = true;
-    Serial.println("! link up");
+    logEvent("link up");
     showLinkState();
     syncNano();
+    webLinkUp();                                     // asks for the Nano's version if not known
   }
 
   if (line[0] == '#') return;                        // debug text for humans
@@ -669,11 +710,13 @@ static void handleNanoLine(char *line) {
       waiting = WAIT_NONE;
       backToOptionMenu();
       statusNote(reachRunning ? "Limits saved, level" : "Level done");
+      if (reachRunning) webReachChanged();          // the web page's reach map reads the new limits
       reachRunning = false;
     }
   }
   else if (!strncmp(line, "TareCompleted", 13)) {
     nanoSend("Ack");
+    calOnTare();
     if (waiting == WAIT_TARE) {
       waiting = WAIT_NONE;
       statusNote("Tare done");
@@ -687,6 +730,8 @@ static void handleNanoLine(char *line) {
     resMassG    = mass;
     resTotalKg  = total;
     haveResult  = true;
+    laserAutoOffAt = millis() + LASER_AUTO_OFF_MS;  // Balance switched the laser on
+    webBalanceDone();                               // the web page's report: arm loads and level now
     refreshResults();
     if (waiting == WAIT_BALANCE) {
       waiting = WAIT_NONE;
@@ -695,6 +740,7 @@ static void handleNanoLine(char *line) {
   }
   else if (!strncmp(line, "Err ", 4)) {
     nanoSend("Ack");
+    calOnErr();
     waiting = WAIT_NONE;
     reachRunning = false;
     backToOptionMenu();
@@ -720,7 +766,7 @@ static void nanoReceiveTick() {
       if (++noiseCount >= NOISE_BYTES) {
         if (!quiet) {
           quiet = true;
-          Serial.printf("! non-text bytes on RX - pausing sends\n");
+          logEvent("non-text bytes on RX - pausing sends");
           showLinkState();
         }
         quietUntil = millis() + QUIET_MS;
@@ -760,7 +806,7 @@ static void linkTick(uint32_t now) {
 
   if (linkUp && (int32_t)(now - lastHeardMs) > (int32_t)LINK_TIMEOUT_MS) {
     linkUp = false;
-    Serial.println("! link down");
+    logEvent("link down");
     showLinkState();
   }
 
@@ -774,6 +820,17 @@ static void linkTick(uint32_t now) {
     nanoSendNow("Stop");
     backToOptionMenu();
     showMessage("No reply", "The Nano did not answer in time. Check the serial wires (see docs/Wiring.md).");
+  }
+
+  if (calJob && (int32_t)(now - calDeadline) >= 0) {
+    calStop();
+    showMessage("No reply", "The Nano did not finish the load cell measurement.");
+  }
+
+  if (laserAutoOffAt && (int32_t)(now - laserAutoOffAt) >= 0) {
+    laserAutoOffAt = 0;
+    nanoSend("LaserOff");
+    statusNote("Laser off (30 s)");
   }
 
   if (now - lastSliderSendMs >= 100) {
@@ -790,10 +847,13 @@ static void linkTick(uint32_t now) {
   }
 }
 
-// ============================================================ UI event handlers
-// Buttons
-void LevelButton_event_handler(lv_event_t * e) {
-  if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+// ============================================================ actions
+// What each button does, shared by the touch screen and the web page (Web.ino).
+// The touch handlers below only call these. Screen changes for the touch
+// buttons are made by SquareLine itself; the web page asks for them with
+// requestScreen().
+
+void doLevel() {
   reachRunning = false;
   lv_label_set_text(ui_LevelLoadingLabel, "Leveling...");
   bool autoStop = isChecked(ui_AutoStopCheckbox);
@@ -801,11 +861,365 @@ void LevelButton_event_handler(lv_event_t * e) {
   nanoSend("Level");
   startWaiting(WAIT_LEVEL, autoStop ? LEVEL_TIMEOUT_MS : 0);
 }
-void LevelCancelButton_event_handler(lv_event_t * e) {
-  if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+void doLevelCancel() {
   waiting = WAIT_NONE;
   nanoSendNow(reachRunning ? "Stop" : "LevelCancel");    // LevelCancel does not stop FindReach
   reachRunning = false;
+}
+void doFindReach() {
+  reachRunning = true;
+  lv_label_set_text(ui_LevelLoadingLabel, "Testing boundaries...");
+  requestScreen(ui_LevelLoadingMenu);
+  nanoSend("FindReach");
+  startWaiting(WAIT_LEVEL, REACH_TIMEOUT_MS);        // it ends by leveling: LevelCompleted
+}
+void doTare() {
+  nanoSend("Tare");
+  startWaiting(WAIT_TARE, TARE_TIMEOUT_MS);
+  statusNote("Taring...");
+}
+void doBalance() {
+  if (tireEntered) sendTireInfo();      // in case the Nano restarted since it was entered
+  nanoSend("Balance");
+  startWaiting(WAIT_BALANCE, BALANCE_TIMEOUT_MS);
+}
+void doBalanceCancel() {
+  waiting = WAIT_NONE;
+  nanoSendNow("BalanceCancel");
+}
+// The Laser button. Pressing it means the user wants the laser as it now is,
+// so the automatic switch-off after a Balance is cancelled.
+void doLaserToggle() {
+  laserAutoOffAt = 0;
+  nanoSend("LaserToggle");
+}
+// Stops everything on the Nano (web page Stop button)
+void doStop() {
+  waiting = WAIT_NONE;
+  reachRunning = false;
+  nanoSendNow("Stop");
+  backToOptionMenu();
+  statusNote("Stopped");
+}
+// Sends the size in the size box. Returns false if it is not a valid size.
+bool doTireEnter() {
+  TireSize t;
+  if (!parseTireSize(tireText, t)) return false;
+  tire = t;
+  tireEntered = true;
+  strcpy(tireEnteredText, tireText);
+  sendTireInfo();
+  recentsAdd(lv_dropdown_get_selected(tireFmtDd), tireText);
+  statusNote("Tire info sent");
+  return true;
+}
+void doSpeedEnter() {
+  enteredMin = lv_slider_get_value(ui_MinSpeedSlider);
+  enteredMax = lv_slider_get_value(ui_MaxSpeedSlider);
+  nanoSend("MinSpeed%d", enteredMin);
+  nanoSend("MaxSpeed%d", enteredMax);
+  nanoSend("Save");                       // also kept by the Nano, for use without the screen
+  prefsDirty();
+  statusNote("Speeds saved");
+}
+void doRestoreDefaults() {
+  prefsApply(PREF_DEFAULTS);
+  prefsWriteNow();
+  syncNano();                             // the Nano uses them at once...
+  nanoSend("Save");                       // ...and keeps the speeds/gain too
+  statusNote("Defaults restored");
+}
+// Laser angle -/+ (1 deg steps)
+void doLaserStep(int step) {
+  int v = constrain((int)lv_slider_get_value(ui_ManualLaserAngleSlider) + step, 0, 360);
+  lv_slider_set_value(ui_ManualLaserAngleSlider, v, LV_ANIM_OFF);
+  lv_event_send(ui_ManualLaserAngleSlider, LV_EVENT_VALUE_CHANGED, NULL);   // label + send to the Nano
+}
+// The laser is pointing at the real 90 deg (the far side): make the current
+// manual angle count as 90. The Nano adjusts and saves its LaserOffset.
+bool doLaserSet90() {
+  if (!isChecked(ui_ManualLaserSwitch)) { statusNote("Turn Manual Laser on first"); return false; }
+  nanoSend("LaserSet90");
+  setSlider(ui_ManualLaserAngleSlider, ui_ManualLaserAngleValueLabel, 90);
+  statusNote("Laser 90 deg set");
+  return true;
+}
+
+// ============================================================ load cell calibration
+// Shared by the touch screen (number pad between steps) and the web page.
+// The Nano does the measuring, unchanged: Tare (arms empty), then CalA/B/C<kg>
+// each measure one arm with a known mass on it and save that load cell's
+// factor at once, printing "# CalA 100129.3". So every load cell is saved as
+// soon as it is done; cancelling stops the rest.
+#define CAL_TIMEOUT_MS 8000          // Tare / CalX take ~1 s (10 readings)
+static const char CAL_NAME[3] = {'A', 'B', 'C'};
+static const int  CAL_DEG[3]  = {210, 90, 330};
+
+void calStart(bool touch) {
+  calJob = 0;
+  calTared = false;
+  calDoneMask = 0;
+  calTouch = touch;
+  calHaveOld = webOldCal(calOld);
+  calSeq++;
+}
+void calTare() {
+  calJob = 1;
+  calDeadline = millis() + CAL_TIMEOUT_MS;
+  nanoSend("Tare");
+  calSeq++;
+  if (calTouch) {
+    lv_label_set_text(ui_LevelLoadingLabel, "Taring (arms empty)...");
+    requestScreen(ui_LevelLoadingMenu);
+  }
+}
+// kg on load cell i (0 = A). False if not tared yet or a silly mass.
+bool calCell(uint8_t i, float kg) {
+  if (i > 2 || !calTared || calJob || !(kg > 0.05f && kg < 100)) return false;
+  calJob = 2 + i;
+  calDeadline = millis() + CAL_TIMEOUT_MS;
+  nanoSend("Cal%c%.3f", CAL_NAME[i], kg);
+  calSeq++;
+  if (calTouch) {
+    char t[40];
+    snprintf(t, sizeof(t), "Calibrating Load Cell %c...", CAL_NAME[i]);
+    lv_label_set_text(ui_LevelLoadingLabel, t);
+    requestScreen(ui_LevelLoadingMenu);
+  }
+  return true;
+}
+// "A: 100129.3 (was 100100.0, +0.03%)" for each load cell done
+static void calSummary(char *out, size_t len) {
+  out[0] = 0;
+  size_t n = 0;
+  for (uint8_t i = 0; i < 3; i++) {
+    if (!(calDoneMask & (1 << i))) continue;
+    if (calHaveOld && calOld[i] != 0)
+      n += snprintf(out + n, len - n, "%c: %.1f (was %.1f, %+.2f%%)\n", CAL_NAME[i], calNew[i], calOld[i],
+                    (calNew[i] / calOld[i] - 1) * 100);
+    else
+      n += snprintf(out + n, len - n, "%c: %.1f\n", CAL_NAME[i], calNew[i]);
+    if (n >= len) break;
+  }
+  if (!out[0]) snprintf(out, len, "No load cell was changed.");
+}
+// ---- touch screen flow:
+//   Load Cell Calibration -> "Select which load cell to calibrate" [A] [B] [C]
+//   -> (first time only: arms empty? Tare) -> number pad for that load cell
+//   -> "Calibrating Load Cell A..." -> back to the selection, done ones ticked.
+// Any load cell can be skipped; Cancel on the pad or the loading page goes
+// back to the selection; its Cancel / Done button ends the calibration.
+static uint8_t   calPick = 0;               // load cell chosen on the selection screen
+static lv_obj_t *calSel = NULL;             // the selection screen (full screen)
+static lv_obj_t *calSelBtnLbl[3];
+static lv_obj_t *calSelEndLbl = NULL;
+
+static void calSelOpen() {
+  for (uint8_t i = 0; i < 3; i++) {
+    bool done = calDoneMask & (1 << i);
+    lv_label_set_text_fmt(calSelBtnLbl[i], "%c\n%d deg%s", CAL_NAME[i], CAL_DEG[i], done ? "\n" LV_SYMBOL_OK : "");
+  }
+  lv_label_set_text(calSelEndLbl, calDoneMask ? "Done" : "Cancel");
+  lv_obj_clear_flag(calSel, LV_OBJ_FLAG_HIDDEN);
+}
+static void calHideAll() {
+  if (calSel) lv_obj_add_flag(calSel, LV_OBJ_FLAG_HIDDEN);
+  if (calPad) lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
+}
+
+// End the calibration (anything still measuring is cancelled).
+// Also used by the web page's Cancel and the timeout.
+void calStop() {
+  if (calJob) nanoSendNow("BalanceCancel");
+  bool touch = calTouch;
+  calJob = 0;
+  calTouch = false;
+  calSeq++;
+  calHideAll();
+  if (calDoneMask) webCalChanged();             // read the new factors back
+  if (touch) {
+    backToOptionMenu();
+    if (calDoneMask) {
+      char s[160];
+      calSummary(s, sizeof(s));
+      showMessage("Load cells calibrated", s);
+    }
+  }
+}
+// Touch flow: stop the current step and go back to the selection screen
+static void calBackToSelect() {
+  if (calJob) nanoSendNow("BalanceCancel");
+  calJob = 0;
+  calSeq++;
+  if (calPad) lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
+  backToOptionMenu();
+  calSelOpen();
+}
+
+// Two lines: what to do, and the weight typed so far (a red hint instead
+// when Enter was pressed without a weight)
+static void calPadShow(bool warn) {
+  char b[96];
+  snprintf(b, sizeof(b), "Add weight to Load Cell %c (%d deg)\nWeight amount (%s): %s",
+           CAL_NAME[calPick], CAL_DEG[calPick], totalWeightInLbs() ? "lbs" : "kg",
+           warn ? "#e53935 type it first#" : "");
+  if (!warn) {
+    size_t n = strlen(b);
+    snprintf(b + n, sizeof(b) - n, "#2196f3 %s#", calPadText[0] ? calPadText : "_");
+  }
+  lv_label_set_text(calPadHead, b);
+}
+static void calPadOpen() {
+  calPadText[0] = 0;
+  calPadShow(false);
+  lv_obj_add_flag(calSel, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(calPad, LV_OBJ_FLAG_HIDDEN);
+}
+static void calPadKey_event_cb(lv_event_t * e) {
+  lv_obj_t *m = lv_event_get_target(e);
+  const char *k = lv_btnmatrix_get_btn_text(m, lv_btnmatrix_get_selected_btn(m));
+  if (!k) return;
+  size_t len = strlen(calPadText);
+  if (!strcmp(k, "Cancel")) { calBackToSelect(); return; }
+  if (!strcmp(k, LV_SYMBOL_BACKSPACE)) { if (len) calPadText[len - 1] = 0; }
+  else if (!strcmp(k, "Enter")) {
+    float v = atof(calPadText);
+    float kg = totalWeightInLbs() ? v / 2.20462f : v;
+    if (!calCell(calPick, kg)) { calPadShow(true); return; }
+    lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  else if (len < sizeof(calPadText) - 1 && !(k[0] == '.' && strchr(calPadText, '.'))) {
+    calPadText[len] = k[0];
+    calPadText[len + 1] = 0;
+  }
+  calPadShow(false);
+}
+
+// First pick: the scale is zeroed with the arms empty
+static void calTareConfirm_event_cb(lv_event_t * e) {
+  lv_obj_t *mb = lv_event_get_current_target(e);
+  const char *t = lv_msgbox_get_active_btn_text(mb);
+  bool start = t && !strcmp(t, "Start");
+  lv_msgbox_close_async(mb);
+  if (start) { lv_obj_add_flag(calSel, LV_OBJ_FLAG_HIDDEN); calTare(); }
+}
+static void calSelPick_event_cb(lv_event_t * e) {
+  if (calJob) return;
+  calPick = (uint8_t)(intptr_t)lv_event_get_user_data(e);
+  if (calTared) { calPadOpen(); return; }
+  static const char *btns[] = {"Start", "Cancel", ""};
+  lv_obj_t *mb = lv_msgbox_create(NULL, "Arms empty?",
+                                  "Remove everything from the arms first:\n"
+                                  "the scale is zeroed before calibrating.", btns, false);
+  lv_obj_center(mb);
+  lv_obj_add_event_cb(mb, calTareConfirm_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+}
+static void calSelEnd_event_cb(lv_event_t * e) {
+  calStop();
+}
+
+// Called from handleNanoLine
+static void calOnTare() {
+  if (calJob != 1) return;
+  calJob = 0;
+  calTared = true;
+  calSeq++;
+  if (calTouch) calPadOpen();
+}
+static void calOnLine(const char *line) {             // "# CalA 100129.3" (the echo "# CalA 5.00" has 2 decimals)
+  if (calJob < 2 || strncmp(line, "# Cal", 5)) return;
+  uint8_t i = calJob - 2;
+  if (line[5] != CAL_NAME[i] || line[6] != ' ') return;
+  const char *dot = strchr(line + 7, '.');
+  if (!dot || strlen(dot + 1) != 1) return;           // the result has exactly one decimal
+  calNew[i] = atof(line + 7);
+  calDoneMask |= 1 << i;
+  calJob = 0;
+  calSeq++;
+  if (calTouch) {
+    char t[32];
+    snprintf(t, sizeof(t), "Load cell %c saved", CAL_NAME[i]);
+    statusNote(t);
+    backToOptionMenu();
+    calSelOpen();
+  }
+}
+static void calOnErr() {                              // the Err itself is shown as usual
+  if (!calJob && !calTouch) return;
+  calJob = 0;
+  calSeq++;
+  if (calPad) lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
+  if (calTouch) calSelOpen();                         // the error message pops up over it
+}
+
+// Debug tab button: start with the selection screen
+static void calButton_event_cb(lv_event_t * e) {
+  calStart(true);
+  calSelOpen();
+}
+
+// Built in setupExtraWidgets(): the selection screen and the number pad
+static void calSetupWidgets() {
+  calSel = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(calSel, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_style_radius(calSel, 0, 0);
+  lv_obj_clear_flag(calSel, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *t = lv_label_create(calSel);
+  lv_label_set_text(t, "Select which load cell to calibrate");
+  lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 6);
+  for (uint8_t i = 0; i < 3; i++) {
+    lv_obj_t *b = lv_btn_create(calSel);
+    lv_obj_set_size(b, 88, 96);
+    lv_obj_align(b, LV_ALIGN_CENTER, (i - 1) * 100, -6);
+    lv_obj_add_event_cb(b, calSelPick_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    calSelBtnLbl[i] = lv_label_create(b);
+    lv_obj_set_style_text_align(calSelBtnLbl[i], LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(calSelBtnLbl[i]);
+  }
+  lv_obj_t *end = lv_btn_create(calSel);
+  lv_obj_set_size(end, 140, 44);
+  lv_obj_align(end, LV_ALIGN_BOTTOM_MID, 0, -2);
+  lv_obj_set_style_bg_color(end, lv_palette_main(LV_PALETTE_GREY), 0);
+  lv_obj_add_event_cb(end, calSelEnd_event_cb, LV_EVENT_CLICKED, NULL);
+  calSelEndLbl = lv_label_create(end);
+  lv_obj_center(calSelEndLbl);
+  lv_obj_add_flag(calSel, LV_OBJ_FLAG_HIDDEN);
+
+  static const char *calMap[] = {"1", "2", "3", LV_SYMBOL_BACKSPACE, "\n",
+                                 "4", "5", "6", ".", "\n",
+                                 "7", "8", "9", "Cancel", "\n",
+                                 "0", "Enter", ""};
+  calPad = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(calPad, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_style_pad_all(calPad, 4, 0);
+  lv_obj_set_style_radius(calPad, 0, 0);
+  lv_obj_clear_flag(calPad, LV_OBJ_FLAG_SCROLLABLE);
+  calPadHead = lv_label_create(calPad);
+  lv_label_set_recolor(calPadHead, true);
+  lv_obj_set_style_text_align(calPadHead, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_width(calPadHead, LV_PCT(100));
+  lv_obj_align(calPadHead, LV_ALIGN_TOP_MID, 0, 2);
+  lv_obj_t *cpad = lv_btnmatrix_create(calPad);
+  lv_btnmatrix_set_map(cpad, calMap);
+  lv_btnmatrix_set_btn_width(cpad, 13, 3);                // "Enter" is three keys wide
+  lv_btnmatrix_set_btn_ctrl_all(cpad, LV_BTNMATRIX_CTRL_NO_REPEAT);
+  lv_obj_set_size(cpad, LV_PCT(100), 185);
+  lv_obj_align(cpad, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_add_event_cb(cpad, calPadKey_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+  lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
+}
+
+// ============================================================ UI event handlers
+// Buttons
+void LevelButton_event_handler(lv_event_t * e) {
+  if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+  doLevel();
+}
+void LevelCancelButton_event_handler(lv_event_t * e) {
+  if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+  if (calTouch) { calBackToSelect(); return; }       // the loading page was showing a calibration step
+  doLevelCancel();
 }
 
 // ---- Debug tab: Find Reach (platform limits), with a confirmation first
@@ -814,12 +1228,7 @@ static void reachConfirm_event_cb(lv_event_t * e) {
   const char *t = lv_msgbox_get_active_btn_text(mb);
   bool start = t && !strcmp(t, "Start");
   lv_msgbox_close_async(mb);
-  if (!start) return;
-  reachRunning = true;
-  lv_label_set_text(ui_LevelLoadingLabel, "Testing boundaries...");
-  lv_scr_load_anim(ui_LevelLoadingMenu, LV_SCR_LOAD_ANIM_FADE_ON, 250, 0, false);
-  nanoSend("FindReach");
-  startWaiting(WAIT_LEVEL, REACH_TIMEOUT_MS);        // it ends by leveling: LevelCompleted
+  if (start) doFindReach();
 }
 
 static void reachButton_event_cb(lv_event_t * e) {
@@ -832,37 +1241,23 @@ static void reachButton_event_cb(lv_event_t * e) {
 }
 void CalibrateButton_event_handler(lv_event_t * e) {        // the "Tare" button
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  nanoSend("Tare");
-  startWaiting(WAIT_TARE, TARE_TIMEOUT_MS);
-  statusNote("Taring...");
+  doTare();
 }
 void BalanceButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  if (tireEntered) sendTireInfo();      // in case the Nano restarted since it was entered
-  nanoSend("Balance");
-  startWaiting(WAIT_BALANCE, BALANCE_TIMEOUT_MS);
+  doBalance();
 }
 void BalanceCancelButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  waiting = WAIT_NONE;
-  nanoSendNow("BalanceCancel");
+  doBalanceCancel();
 }
 void LaserButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  nanoSend("LaserToggle");
+  doLaserToggle();
 }
 void TireInfoEnterButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  TireSize t;
-  if (!parseTireSize(tireText, t)) {
-    showMessage("Tire size", "Tap the size box and enter the tire size first.");
-    return;
-  }
-  tire = t;
-  tireEntered = true;
-  sendTireInfo();
-  recentsAdd(lv_dropdown_get_selected(tireFmtDd), tireText);
-  statusNote("Tire info sent");
+  if (!doTireEnter()) showMessage("Tire size", "Tap the size box and enter the tire size first.");
 }
 
 // ---- size formats for the number pad (TireFmt is defined near the top)
@@ -967,15 +1362,7 @@ static void tireFmt_event_cb(lv_event_t * e) {
 }
 void SpeedEnterButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  enteredMin = lv_slider_get_value(ui_MinSpeedSlider);
-  enteredMax = lv_slider_get_value(ui_MaxSpeedSlider);
-  enteredKp  = lv_slider_get_value(ui_SpeedCurveSlider);               // re-labelled "Level Gain Kp"
-  nanoSend("MinSpeed%d", enteredMin);
-  nanoSend("MaxSpeed%d", enteredMax);
-  nanoSend("Kp%d", enteredKp);
-  nanoSend("Save");                       // also kept by the Nano, for use without the screen
-  prefsDirty();
-  statusNote("Speeds saved");
+  doSpeedEnter();
 }
 
 // Sliders that send while they move (throttled in linkTick)
@@ -998,6 +1385,7 @@ void MassCompSwitch_event_cb(lv_event_t * e) {
   prefsDirty();
 }
 void ManualLaserSwitch_event_cb(lv_event_t * e) {
+  laserAutoOffAt = 0;                     // the user is pointing the laser: leave it alone
   if (isChecked(ui_ManualLaserSwitch)) {
     nanoSend("LaserAngle%d", (int)lv_slider_get_value(ui_ManualLaserAngleSlider));
     nanoSend("ManualLaserOn");
@@ -1024,12 +1412,7 @@ static void restoreConfirm_event_cb(lv_event_t * e) {
   const char *t = lv_msgbox_get_active_btn_text(mb);
   bool go = t && !strcmp(t, "Restore");
   lv_msgbox_close_async(mb);
-  if (!go) return;
-  prefsApply(PREF_DEFAULTS);
-  prefsWriteNow();
-  syncNano();                             // the Nano uses them at once...
-  nanoSend("Save");                       // ...and keeps the speeds/gain too
-  statusNote("Defaults restored");
+  if (go) doRestoreDefaults();
 }
 static void restoreButton_event_cb(lv_event_t * e) {
   static const char *btns[] = {"Restore", "Cancel", ""};
@@ -1042,18 +1425,10 @@ static void restoreButton_event_cb(lv_event_t * e) {
 
 // ---- Debug tab: laser angle -/+ (1 deg steps) and "Set 90"
 static void laserStep_event_cb(lv_event_t * e) {
-  int step = (int)(intptr_t)lv_event_get_user_data(e);
-  int v = constrain((int)lv_slider_get_value(ui_ManualLaserAngleSlider) + step, 0, 360);
-  lv_slider_set_value(ui_ManualLaserAngleSlider, v, LV_ANIM_OFF);
-  lv_event_send(ui_ManualLaserAngleSlider, LV_EVENT_VALUE_CHANGED, NULL);   // label + send to the Nano
+  doLaserStep((int)(intptr_t)lv_event_get_user_data(e));
 }
-// The laser is pointing at the real 90 deg (the far side): make the current
-// manual angle count as 90. The Nano adjusts and saves its LaserOffset.
 static void laserSet90_event_cb(lv_event_t * e) {
-  if (!isChecked(ui_ManualLaserSwitch)) { statusNote("Turn Manual Laser on first"); return; }
-  nanoSend("LaserSet90");
-  setSlider(ui_ManualLaserAngleSlider, ui_ManualLaserAngleValueLabel, 90);
-  statusNote("Laser 90 deg set");
+  doLaserSet90();
 }
 
 // ---- Tire Info: Recents - the last 5 different sizes entered, newest first
@@ -1190,13 +1565,19 @@ static void setupExtraWidgets() {
   lv_obj_add_flag(tirePad, LV_OBJ_FLAG_HIDDEN);
   showTireResult();
 
-  // Debug tab: the old "Speed Curve Exp." slider is now the leveling PID gain.
+  // Debug tab: the old "Speed Curve Exp." row (last used for the leveling gain
+  // Kp) is hidden - Kp is tuned on the Nano and a user never needs to change
+  // it (the Kp command still works from a PC or the web console). Everything
+  // below it moves up one row: 25% of the tab, the same as the SquareLine
+  // spacing between the Kp row and Units.
+  lv_obj_t *kpRow[] = {ui_SpeedCurveSlider, ui_SpeedCurveSliderLabel, ui_SpeedCurveValueLabel};
+  for (lv_obj_t *o : kpRow) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+  // Enter Speed spanned the three slider rows (120 px, centred at 97%); now
+  // there are two: 2/3 the height, centred on Min/Max the same way (84%).
+  lv_obj_set_height(ui_SpeedEnterButton, 80);
+  lv_obj_set_y(ui_SpeedEnterButton, lv_pct(84));
   // Slider start values match the Nano's tuned defaults (Settings.ino), so
   // pressing "Enter Speed" without moving them changes nothing.
-  lv_label_set_text(ui_SpeedCurveSliderLabel, "Level Gain Kp");
-  lv_slider_set_range(ui_SpeedCurveSlider, 10, 400);
-  lv_slider_set_value(ui_SpeedCurveSlider, 300, LV_ANIM_OFF);
-  lv_label_set_text(ui_SpeedCurveValueLabel, "300");
   lv_slider_set_value(ui_MinSpeedSlider, 20, LV_ANIM_OFF);
   lv_label_set_text(ui_MinSpeedValueLabel, "20");
   lv_slider_set_value(ui_MaxSpeedSlider, 150, LV_ANIM_OFF);
@@ -1206,26 +1587,51 @@ static void setupExtraWidgets() {
   lv_label_set_text(ui_PitchOffsetSliderLabel, "Pitch Trim (deg tenths)");
   lv_label_set_text(ui_RollOffsetSliderLabel, "Roll Trim (deg tenths)");
 
-  // Debug tab: Find Reach button, below the existing controls
+  // Debug tab: Load Cell Calibration, below the existing controls
+  lv_obj_t *calBtn = lv_btn_create(ui_Debug_Tab);
+  lv_obj_set_size(calBtn, 220, 45);
+  lv_obj_set_align(calBtn, LV_ALIGN_CENTER);
+  lv_obj_set_y(calBtn, lv_pct(200));
+  lv_obj_add_event_cb(calBtn, calButton_event_cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_t *calLbl = lv_label_create(calBtn);
+  lv_label_set_text(calLbl, "Load Cell Calibration");
+  lv_obj_center(calLbl);
+
+  calSetupWidgets();                                       // its selection screen and number pad
+
+  // Debug tab: Find Reach button, under Load Cell Calibration
   lv_obj_t *reachBtn = lv_btn_create(ui_Debug_Tab);
   lv_obj_set_size(reachBtn, 140, 45);
   lv_obj_set_align(reachBtn, LV_ALIGN_CENTER);
-  lv_obj_set_y(reachBtn, lv_pct(200));
+  lv_obj_set_y(reachBtn, lv_pct(230));
   lv_obj_add_event_cb(reachBtn, reachButton_event_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *reachLbl = lv_label_create(reachBtn);
   lv_label_set_text(reachLbl, "Find Reach");
   lv_obj_center(reachLbl);
 
   // Debug tab: Restore Factory Defaults, at the very bottom
-  lv_obj_t *restoreBtn = lv_btn_create(ui_Debug_Tab);
+  restoreBtn = lv_btn_create(ui_Debug_Tab);
   lv_obj_set_size(restoreBtn, 220, 45);
   lv_obj_set_align(restoreBtn, LV_ALIGN_CENTER);
-  lv_obj_set_y(restoreBtn, lv_pct(230));
+  lv_obj_set_y(restoreBtn, lv_pct(260));
   lv_obj_set_style_bg_color(restoreBtn, lv_palette_main(LV_PALETTE_RED), 0);
   lv_obj_add_event_cb(restoreBtn, restoreButton_event_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *restoreLbl = lv_label_create(restoreBtn);
   lv_label_set_text(restoreLbl, "Restore Factory Defaults");
   lv_obj_center(restoreLbl);
+
+  // Close the gap the hidden Kp row left: everything below it (Units, Find
+  // Reach, Restore) moves up by one row. Positions are still lv_pct() here;
+  // the laser re-layout below then works from the moved positions.
+  {
+    const int32_t KP_ROW_PCT = 115, ROW_PCT = 25;     // Kp label row; Kp label -> Units label
+    uint32_t n = lv_obj_get_child_cnt(ui_Debug_Tab);
+    for (uint32_t i = 0; i < n; i++) {
+      lv_obj_t *c = lv_obj_get_child(ui_Debug_Tab, i);
+      lv_coord_t y = lv_obj_get_style_y(c, LV_PART_MAIN);
+      if (LV_COORD_IS_PCT(y) && LV_COORD_GET_PCT(y) > KP_ROW_PCT) lv_obj_set_y(c, lv_pct(LV_COORD_GET_PCT(y) - ROW_PCT));
+    }
+  }
 
   // Debug tab, top re-laid out for laser calibration:
   //   [Manual Laser]  [Set 90]
@@ -1330,6 +1736,7 @@ void setup() {
   Wire.begin(I2C_SDA, I2C_SCL);
   Serial.begin(LOG_BAUD);
   Serial.println("\nTire balancer screen " SCREEN_FW_VERSION " - Nano link: RX IO35, TX IO22");
+  NanoSerial.setRxBufferSize(1024);   // room for ~1 s of Nano lines while a web page is being sent
   NanoSerial.begin(NANO_BAUD, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
 
   lv_init();
@@ -1379,6 +1786,8 @@ void setup() {
   lv_obj_add_event_cb(ui_TestWeightSwitch2, UnitsSwitch_event_cb, LV_EVENT_VALUE_CHANGED, NULL);   // total weight: kg / lbs
   // Checkbox
   lv_obj_add_event_cb(ui_AutoStopCheckbox, AutoStopCheckbox_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
+
+  webSetup();           // WiFi hotspot + web page (Web.ino)
 }
 
 void loop()
@@ -1394,6 +1803,7 @@ void loop()
   linkTick(now);
   nanoSendTick(now);
   prefsTick(now);     // save changed settings ~1.5 s after the last change
+  webTick(now);       // web page requests (run here, so they can use LVGL safely)
 
   delay(5);
 }

@@ -9,26 +9,60 @@ with everything connected" in [Wiring.md](Wiring.md).
 The Nano's flash is 98% full (about 390 bytes free) - see GOALS.md before
 adding to it.
 
+Each board's libraries are in the repo, at the exact versions tested, so
+nothing has to be installed from the Library Manager:
+
+| Board | Sketchbook location | Libraries bundled |
+|---|---|---|
+| Nano | `Nano` | `Nano/libraries`: MPU6050 (Electronic Cats) 1.4.3, HX711 (Rob Tillaart) 0.6.0 |
+| Screen | `Screen` | `Screen/libraries`: LVGL 8.3.11 (with `lv_conf.h`), TFT_eSPI 2.5.43 (set up for this board), `ui` (the screens) |
+
+The Arduino IDE only looks for libraries in the `libraries` folder of its
+**Sketchbook location**, so point that at the board's folder before opening
+its sketch:
+
+1. Arduino IDE > File > Preferences > **Sketchbook location** > Browse, pick
+   the board's folder from the table (the folder that contains `libraries`),
+   OK.
+2. **Restart the Arduino IDE** (it reads the libraries at start-up).
+3. Open the sketch, set the board (below) and Upload.
+
+Switching between the Nano and the screen means changing the Sketchbook
+location and restarting again. Write down your old location first and set it
+back afterwards if you use the IDE for other projects. Do not install or update
+these libraries with the Library Manager while the location points into the
+repo: it would write into the repo's copy.
+
+The board packages (Boards Manager) are not in the repo. Tested with
+**Arduino AVR Boards 1.8.6** and **esp32 by Espressif Systems 3.3.0**.
+
 ### Nano
 
-1. Install two libraries with the Library Manager: **MPU6050** by Electronic
-   Cats and **HX711** by Rob Tillaart.
+1. Sketchbook location = the repo's `Nano` folder, restart the IDE.
 2. Open `Nano/TireBalancer_Nano/TireBalancer_Nano.ino` (the other tabs open with it).
 3. Board: *Arduino Nano*. Processor: *ATmega328P (Old Bootloader)* if a plain
-   *ATmega328P* upload fails.
-4. Upload.
+   *ATmega328P* upload fails (it does on this machine's Nano).
+4. Upload. With the screen wired up, see "Uploading with everything connected"
+   in [Wiring.md](Wiring.md).
+
+`Tools/MPU6050_Calibrate` and `Tools/I2C_Scanner` (Nano) build with the same
+setting.
 
 ### Screen
 
-The CYD is picky, so the exact libraries it needs are bundled in `Screen/libraries`.
+The CYD is picky about library versions and settings, which is why its
+libraries are bundled.
 
-1. Arduino IDE > File > Preferences > **Sketchbook location** = the `Screen`
-   folder of this repo (the folder that contains `ui` and `libraries`).
-   Set it back afterwards if you use the IDE for other projects.
-2. Open `Screen/ui/ui.ino`.
+1. Sketchbook location = the repo's `Screen` folder, restart the IDE.
+2. Open `Screen/ui/ui.ino` (`Web.ino` and `WebPage.h` open with it).
 3. Boards Manager: install **esp32** by Espressif Systems.
 4. Board: *ESP32 Dev Module*. Tools > Flash Mode: *DIO*.
-5. Upload. If the upload will not start, try a USB 2 port.
+5. Tools > Partition Scheme: **Huge APP (3MB No OTA/1MB SPIFFS)**. With the
+   web page the program is about 1.3 MB, more than the default scheme's
+   1.25 MB, and the IDE stops with "Sketch too big" if this is left on Default.
+   (`partitions.csv` in the sketch folder makes sure the board gets this
+   layout either way. Saved settings and Recents are kept when switching.)
+6. Upload. If the upload will not start, try a USB 2 port.
 
 To edit the screens, open `Screen/squareline/CYD_SD2_V0.2.spj` in SquareLine
 Studio and export into `Screen/libraries/ui`. Several parts are built or
@@ -40,7 +74,8 @@ Restore Factory Defaults, and the status line.
 ### Command line (optional)
 
 `powershell -ExecutionPolicy Bypass -File Tools\build.ps1` compiles both
-sketches with `arduino-cli` without uploading.
+sketches with `arduino-cli` without uploading. It uses only the repo's
+libraries (the same redirect as above), so it also proves nothing is missing.
 
 ## After rebuilding or changing the hardware
 
@@ -64,6 +99,25 @@ with **no tire** and a hand on the power switch.
 Done 2026-11-13 with the arms fitted (factors are the firmware defaults).
 Repeat with a weighed mass of 2-10 kg if the load cells or arms change.
 
+**From the screen:** Debug tab > **Load Cell Calibration** (above Find Reach)
+opens "Select which load cell to calibrate": **A (210)**, **B (90)**,
+**C (330)**. The first pick asks for the arms to be empty and zeroes the scale.
+Then the number pad asks for the weight on that load cell (kg, or lbs if the
+total weight is shown in lbs); put the weight on that arm only and press
+Enter. "Calibrating Load Cell A..." takes about a second, then you are back at
+the selection with a tick on the ones done: pick the next one or skip it.
+**Done** (Cancel before any is done) lists the new factors and how much each
+changed. Cancel on the number pad or the loading page goes back to the
+selection.
+
+**From the web page:** the same button on the Debug tab opens a screen with
+Tare and a row per load cell (weight box + Calibrate), then Done.
+
+Each load cell is saved by the Nano as soon as it is calibrated; ending early
+leaves the ones not done as they were. Any of them can be done on its own.
+
+**By hand** (Serial Monitor, or the web console):
+
 1. Arms empty: `Tare`
 2. Put the mass on arm **A** only (210°): `CalA5.0` (your mass in kg)
 3. Move it to arm **B** (90°): `CalB5.0`
@@ -79,16 +133,20 @@ that load cell and about zero on the other two.
 
 The screen keeps these in its own flash and sends them to the Nano after every
 handshake (power-on, Nano restart), so they survive a power cycle: Pitch/Roll
-Trim, Min/Max Speed and Level Gain Kp (as last sent with **Enter Speed**), Mass
-Comp, Auto Stop, the units switches and Clip-on/Stick-on. Changes are saved
-about 1.5 s after the last touch. Not kept on purpose: Manual Laser (so the
-laser never switches itself on at boot) and Test Weight (a bench-test fake
-load that would skew every result).
+Trim, Min/Max Speed (as last sent with **Enter Speed**), Mass Comp, Auto Stop,
+the units switches and Clip-on/Stick-on. Changes are saved about 1.5 s after
+the last touch. Not kept on purpose: Manual Laser (so the laser never switches
+itself on at boot) and Test Weight (a bench-test fake load that would skew
+every result).
+
+The leveling gains (`Kp`, `Ki`, `Kd` and the loaded set) are not on the
+screens: they are tuned once and kept by the Nano. Change them from a PC or the
+web page's console if the machine is ever re-tuned (see "Tuning the leveling").
 
 **Restore Factory Defaults** (bottom of the Debug tab) puts those back to the
-tuned values - trims 0, Min 20, Max 150, Kp 300, Mass Comp on, Auto Stop on,
-oz / kg, Clip-on - and sends them to the Nano. Calibration, the reach area, the
-factory zero and the Recents list are not touched.
+tuned values - trims 0, Min 20, Max 150, Mass Comp on, Auto Stop on, oz / kg,
+Clip-on - and sends them to the Nano. Calibration, the reach area, the factory
+zero and the Recents list are not touched.
 
 **Recents** (Tire Info tab, scroll down): the last 5 different sizes entered,
 newest first. Tap one to fill in the format and size, then press **Enter**.
@@ -101,11 +159,84 @@ newest first. Tap one to fill in the format and size, then press **Enter**.
    so it works with or without a tire and without a Tare.
 4. **Tire Info**: choose the format, tap the size box and type the size as
    printed (or tap a Recent), choose Clip-on or Stick-on, press **Enter**.
-5. **Balance**. Read the weight and angle; the laser points at the spot.
+5. **Balance**. Read the weight and angle; the laser points at the spot. It
+   switches itself off after 30 s. Pressing **Laser** (touch screen or web)
+   cancels that: the laser then stays on or off as you leave it.
+
+## Web page (phone or laptop)
+
+The screen makes its own WiFi hotspot, so a phone can run the machine:
+
+1. On the phone, join the WiFi **TireBalancer** (open, no password). It has
+   no internet; tell the phone to stay connected if it asks.
+2. The page usually opens by itself as a "sign in to network" page. If not,
+   open a browser at **http://192.168.4.1**. (The touch screen's Debug tab,
+   at the bottom, shows this too, with the number of phones connected.)
+
+The page has the same tabs as the touch screen (Level, Tire Info, Balance,
+Debug) plus:
+
+- **STOP** at the top, always available: stops everything on the Nano.
+- **Safety tick** - "I can see the machine and it is clear". Until it is
+  ticked, everything that moves the platform or switches the laser on
+  (Level, Balance, Laser, Find Reach, manual laser, console commands that are
+  not read-only) is greyed out, and the screen refuses those requests anyway.
+  It clears itself after 5 minutes unused or when the WiFi link drops.
+- **Tire Info**: type the size with the phone's keyboard (format is found
+  automatically); it shows what the size means as you type.
+- **Level tab, Live view** (choose *Leveling*, *Sensors* or *Off*; it starts
+  Off each time the page opens):
+  - *Leveling*: a bubble level of the platform's distance from level (the dot
+    sits on the high side; rings at 0.1, 1 and 2 deg), frame tilt, reach margin
+    with "Level can start / Close to the limit / Too steep", both actuators'
+    drive, and two 20 s charts (platform off level, with the level tolerance
+    band; actuator drive). Level starts and finishes are marked on the charts,
+    and the time of each run is listed under the Level button. Pause, Save CSV
+    (last 2 minutes) and tap/drag on a chart to read values.
+  - *Sensors*: bubble levels for the platform (accelerometer only) and the
+    frame, and the **reach map**: how far, and which way, the frame may tilt
+    for the platform to still reach level (outer line), the line Level must
+    start inside (1.5 deg margin), and the frame's position now.
+- **Balance tab, wheel drawing**: the wheel seen from above, standing at the
+  screen, to scale once the size is entered: the three arms, where the weight
+  goes (with grams/oz) and the centre of gravity (enlarged). With **Live load
+  cells** on, the arms show their kg and the drawing follows the load live.
+- **Balance tab, Balance report** (after a Balance): date and time (from the
+  phone), weight and angle, total, centre of gravity, the tire, weight type
+  and radius, each arm's load and how level the platform was right after the
+  Balance, Mass Comp / Test Weight, firmware. **Save CSV**, or **Print / Save
+  PDF** (one page with the wheel drawing). Nothing is kept on the machine; save
+  the report if you need it. Saving and printing need the phone's own browser
+  (http://192.168.4.1), not the WiFi sign-in window.
+- **Console**: every line sent to and received from the Nano, a box to type
+  commands, **Save** to download the log (with times) as a text file, and
+  the full command list from [Protocol.md](Protocol.md) with a short
+  description each: tap to send, or to put a value command in the box.
+- **Info**: link counters, firmware versions, uptime, free memory, and the
+  Nano's settings from its last `Status`, one per row.
+
+The touch screen and the page always agree: a change on either shows on the
+other (and on every connected phone) within a second, and anything started
+from a phone shows the same Leveling/Balancing page on the touch screen, with
+its Cancel button working as usual.
+
+Live data comes from the Nano's own debug outputs (`LevelDebug`,
+`SensorDebug`, `ScaleDebug`). The screen switches each one on only while some
+phone is showing it and off again about 3 s after the last one stops (closing
+the page or switching tabs is enough), so the 9600-baud link never carries
+streams nobody is looking at. Typing those commands in the console still works,
+but a live view may switch them back off when it closes. The reach map uses
+the Nano's `Status`, which the screen reads when the link comes up and again
+after Find Reach.
+
+The page is in `Screen/ui/WebPage.h` (plain HTML/CSS/JavaScript, edit it
+directly); the server side is `Screen/ui/Web.ino`.
 
 ## Tuning the leveling
 
-All of these can be typed while it is running. `Save` keeps them.
+All of these can be typed while it is running (Serial Monitor, or the web
+page's console, which lists every command). `Save` keeps them. The web page's
+Level tab live view (*Leveling*) charts each run while you tune.
 
 | Symptom | Try |
 |---|---|

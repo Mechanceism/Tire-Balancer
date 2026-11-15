@@ -25,7 +25,8 @@ An Arduino Nano does the leveling, weighing and laser. An ESP32 touch screen (CY
 | Folder | What is in it |
 |---|---|
 | [Nano/TireBalancer_Nano](Nano/TireBalancer_Nano) | Arduino Nano firmware |
-| [Screen/ui](Screen/ui) | Touch screen sketch |
+| [Nano/libraries](Nano/libraries) | Libraries bundled for the Nano (MPU6050, HX711) |
+| [Screen/ui](Screen/ui) | Touch screen sketch, including the web page (`Web.ino`, `WebPage.h`) |
 | [Screen/libraries](Screen/libraries) | Libraries bundled for the screen (LVGL 8.3.11, TFT_eSPI 2.5.43 with this board's setup, generated UI) |
 | [Screen/squareline](Screen/squareline) | SquareLine Studio project for the screens |
 | [Tools](Tools) | MPU6050 calibration, I2C scanner, touch test, build script |
@@ -39,6 +40,7 @@ Older releases (Nano V0.1-V0.4, screen V0.1-V0.2) are in the git history of `mai
  - 3 point Tire Weighing
  - 3 axis tire CG (Center of gravity) Calculation
  - Capacitive touchscreen for data entering and viewing
+ - Web page on a phone or laptop over the screen's own WiFi hotspot
  - Tire centering jig
  - Added weight amount and location output
  - Laser guided pointer to required added weight location
