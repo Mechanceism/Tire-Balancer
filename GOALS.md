@@ -20,45 +20,42 @@ where to put it.
   directions on. A sensor fault stops the motion instead of chasing it, and
   the platform is never asked to reach a position it cannot get to.
 - **Easy to modify.** Text commands you can type by hand, tunable values
-  changeable without re-flashing, code split by job.
+  changeable without re-flashing, code split by job. The command list is
+  written down once (docs/Protocol.md) and mirrored by the web console, so
+  the two are always updated together.
 
 ## Division of work
 
 - **Nano**: everything real-time (leveling, weighing, laser). Metric only.
 - **Screen**: the user interface, all unit conversion, and the user settings
   (kept in its flash and sent to the Nano after every handshake). Also serves
-  the web page over its own WiFi hotspot; the Nano does not know about it.
+  the web page over its own WiFi hotspot. The Nano is treated as the screen's
+  sensor and motor extension: it does not know about the web page, and new
+  features are built on the screen from what the Nano already sends.
 
-## Web page (in stages)
+## Web page (Screen V0.5.0)
 
 The screen's open hotspot "TireBalancer" serves a page at 192.168.4.1 that
-does everything the touch screen does (docs/Setup.md, "Web page"). Built on the
-ESP32 core's own WebServer (no extra libraries), page embedded in the program.
+does everything the touch screen does, and more (docs/Setup.md, "Web page").
+Built on the ESP32 core's own WebServer (no extra libraries), page embedded in
+the program. The Nano is unchanged.
 
-- [x] Stage 1 (Screen V0.5.0): hotspot, sign-in pop-up, all touch screen
-  controls, STOP, safety tick, console, Info tab. Tested on a phone with the
-  machine.
-- [x] Stage 2: wheel drawing on the Balance tab (weight position, grams, centre
-  of gravity, live load cells per arm); live view on the Level tab (bubble
-  levels, actuator drive, reach margin, 20 s tuning charts with run marks and
-  times, CSV); reach map (allowed frame tilt, Level start line, frame now).
-  Debug streams switched on only while shown. Checked in a browser against a
-  simulated Nano; **still to test on a phone with the machine.**
-- [x] Stage 2 tested on a phone; tweaks: Live view starts Off, console lists
-  every command with its description, Info shows Status one setting per row,
-  Kp slider removed, laser off 30 s after a Balance.
-- [x] Stage 3: Balance report on the web page (CSV, print / PDF) with the
-  phone's date and time, the tire, the result, each arm's load and the
-  platform's level captured right after the Balance. **To test on a phone.**
-- [x] Stage 3: Load Cell Calibration on the touch screen and the web page
-  (Tare, then A, B, C with a known weight; each saved when done). **To test.**
-- Decided against: an editable settings table (Info shows the settings; the
-  console's command list edits them), a stored balance history (the report is
-  saved on the phone instead), a QR code (the WiFi is open).
+- [x] Hotspot, sign-in pop-up, all touch screen controls kept in sync, STOP,
+  safety tick, console with the full command list, Info tab (tested on a phone)
+- [x] Live view: bubble levels, actuator drive, reach margin, tuning charts
+  with run times and CSV; Sensors view with the reach map (tested on a phone)
+- [x] Wheel drawing with live load cells; Balance report as CSV or print / PDF
+  with the phone's date and time
+- [x] Load Cell Calibration on the touch screen and the web page (tested)
+- [x] Laser off 30 s after a Balance; Kp slider removed
+- Decided against: an editable settings table (Info shows the settings, the
+  console edits them), a stored balance history (the report is saved on the
+  phone), a QR code (the WiFi is open), firmware updates over WiFi.
 
-Not planned: firmware updates over WiFi. The Nano protocol stays as it is;
-new information comes from what the Nano already sends (`Status`, the debug
-lines, events).
+**Keep in sync:** the console's command list (`CMDS` in
+`Screen/ui/WebPage.h`, with `SAFE` there and `SAFE_COMMANDS` in
+`Screen/ui/Web.ino`) must match docs/Protocol.md. When a Nano command is added,
+renamed or removed, change all of them in the same commit.
 
 ## Next up
 
@@ -68,7 +65,7 @@ lines, events).
 2. Measure where clip-on and stick-on weights really sit and set
    `CLIP_ON_OFFSET_MM` / `STICK_ON_OFFSET_MM` (Screen/ui/ui.ino; now estimates).
 3. Re-check the load cells with a weighed reference mass (calibrated with a
-   1.5 L bottle taken as 1.55 kg).
+   1.5 L bottle taken as 1.55 kg) - now easy with Load Cell Calibration.
 4. With a heavier wheel (car wheel, 15-25 kg), tune the loaded gains there
    too: the interpolation has one loaded point (8.66 kg) and holds its line
    only up to 2x that.
@@ -125,6 +122,8 @@ Screen (2026-11-14):
 - [x] Tire size by format dropdown + full-screen number pad; Recents
 - [x] Settings kept across power cycles; Restore Factory Defaults
 - [x] No restart when Level is refused (two screen animations at once)
+- [x] Web page over the screen's own WiFi (V0.5.0, see above); Load Cell
+      Calibration on both screens
 
 ### Still to do on the machine
 

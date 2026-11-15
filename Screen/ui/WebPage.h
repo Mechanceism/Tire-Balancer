@@ -504,7 +504,9 @@ $('#cmdSend').onclick=async()=>{const c=$('#cmd').value.trim();if(!c)return;cons
 $('#cmd').onkeydown=e=>{if(e.key=='Enter')$('#cmdSend').click()};
 $$('[data-c]').forEach(b=>b.onclick=()=>act('cmd',b.dataset.c));
 
-// Command list, as in docs/Protocol.md. [name, description, kind]
+// Command list, as in docs/Protocol.md. KEEP IN SYNC with that page: same
+// sections, names and order; add, rename or remove commands in both (and in
+// SAFE / Web.ino SAFE_COMMANDS) in the same commit. [name, description, kind]
 //   kind: '' = send as is; ['On','Off',...] = one button per suffix; {u:'unit'} = takes a value
 // SAFE must match SAFE_COMMANDS in Web.ino (the rest need the safety tick).
 const SAFE=new Set(['Ping','Status','LevelDebugOn','LevelDebugOff','SensorDebugOn','SensorDebugOff','ScaleDebugOn','ScaleDebugOff','Stop','LevelCancel','BalanceCancel','LaserOff','ManualLaserOff','Ack']);

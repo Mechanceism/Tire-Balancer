@@ -353,7 +353,8 @@ static void webState() {
 }
 
 // ------------------------------------------------------------ POST /api/do  a=<action> v=<value> ack=0|1
-// Commands typed in the console that cannot move anything or switch the laser on
+// Commands typed in the console that cannot move anything or switch the laser on.
+// Keep identical to SAFE in WebPage.h (see the top of docs/Protocol.md).
 static const char *const SAFE_COMMANDS[] = {
   "Ping", "Status", "LevelDebugOn", "LevelDebugOff", "SensorDebugOn", "SensorDebugOff",
   "ScaleDebugOn", "ScaleDebugOff", "Stop", "LevelCancel", "BalanceCancel", "LaserOff",

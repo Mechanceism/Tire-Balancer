@@ -1,58 +1,70 @@
 # Change Log
 
-## Unreleased
+## Screen V0.5.0 (2026-11-14) - web page, load cell calibration
 
-- **Nano libraries bundled** in `Nano/libraries` (MPU6050 1.4.3, HX711 0.6.0),
-  like the screen's. Set the IDE's Sketchbook location to `Nano` to build
-  without installing anything; see docs/Setup.md.
-- `Tools/build.ps1` now builds each board with only the repo's libraries.
-- **Screen V0.5.0: web page, stage 1.** The screen makes an open WiFi
-  hotspot "TireBalancer" and serves a phone-first page at 192.168.4.1 (opens
-  by itself as a sign-in page): everything the touch screen does, plus STOP,
-  a safety tick required for anything that moves or switches the laser on,
-  a console (live Nano log, send commands, save log) and an Info tab. Built
-  on the ESP32 core's own WebServer, so no new libraries. The Nano is
-  unchanged.
-- The touch screen's button handlers became shared `do...()` actions used by
-  both the touch screen and the web page; screen changes from code all go
-  through the deferred `requestScreen()`.
-- **Web page, stage 2.** Level tab live view: bubble levels, reach margin,
-  actuator drive, 20 s charts of platform angle and actuator drive with
-  Level start/finish marks, run times, CSV export; Sensors view with platform
-  and frame bubbles and a reach map. Balance tab: the wheel drawn from above
-  with the weight position, centre of gravity and (live) load cell readings.
-  The screen switches the Nano's debug streams on only while a page shows
-  them, keeps the Nano's Status lines (read at link up and after Find Reach;
-  listed on the Info tab), and timestamps every log line (Save in the console
-  now includes times).
-- After phone testing: Live view starts Off; Sensors readings in ruled rows
-  (now with platform pitch/roll); the console lists every command from
-  Protocol.md with a description; the Info tab shows the Nano's Status one
-  setting per row, grouped.
-- **Level Gain Kp slider removed** from the touch screen and the web page (the
-  rows below move up). The screen no longer sends or stores `Kp`; the Nano's
-  saved, tuned gains are used. `Kp` still works as a command.
-- Enter Speed button 2/3 as tall, centred on the two remaining speed rows.
-- **Laser auto-off**: the screen switches the laser off 30 s after a Balance,
-  unless the Laser button (or Manual Laser) is used first. The web page shows
-  the countdown on the Balance tab.
-- **Balance report** (web, Balance tab): CSV or print / Save as PDF, with the
-  phone's date and time, result, tire, weight type and radius, centre of
-  gravity, and each arm's load and the platform's level, which the screen
-  captures by switching the scale and level streams on for a moment right
-  after every Balance. The wheel drawing shows those arm loads too.
-- **Load Cell Calibration** (Debug tab, above Find Reach, on the touch screen
-  and the web page): Tare with empty arms, then each load cell with a known
-  weight typed in kg or lbs (follows the total weight unit). Touch screen: a
-  "Select which load cell to calibrate" screen (A 210 / B 90 / C 330, ticked
-  when done, any can be skipped; the first pick tares), a two-line number pad
-  per load cell, and the leveling page showing "Calibrating Load Cell A...".
-  Web: a Tare row and a row per load cell with
-  Calibrate, then Cancel / Done. The new factors and their change are shown.
-  Uses the Nano's Tare and CalA/B/C unchanged, so each load cell is saved as
-  soon as it is done.
-- Needs the **Huge APP** partition scheme (program ~1.3 MB);
-  `Screen/ui/partitions.csv` sets the layout. Saved settings carry over.
+The screen now makes its own WiFi hotspot and serves a web page that does
+everything the touch screen does, and more. Tested on a phone with the machine.
+The **Nano is unchanged (V0.7.0)**: the page uses the same commands, debug
+lines and events as the touch screen.
+
+Web page (open WiFi "TireBalancer", http://192.168.4.1)
+- Phone-first page embedded in the sketch (`Screen/ui/WebPage.h`, plain
+  HTML/CSS/JavaScript), served by the ESP32 core's own WebServer and
+  DNSServer (`Screen/ui/Web.ino`); no extra libraries. Every web address
+  leads to it, so phones offer it as a sign-in page.
+- The same tabs as the touch screen (Level, Tire Info, Balance, Debug), kept in
+  sync both ways within a second; anything started from a phone also shows the
+  touch screen's loading page. Tire sizes typed with the phone keyboard
+  (format detected), live check of what the size means.
+- **STOP** always at the top. **Safety tick** ("I can see the machine and it
+  is clear") required for anything that moves the platform or switches the
+  laser on, checked by the screen too; clears after 5 minutes unused or when
+  the WiFi drops.
+- **Level tab live view** (starts Off): *Leveling* - bubble level, pitch/roll,
+  frame tilt, reach margin badge, actuator drive bars, 20 s charts of platform
+  angle (tolerance band) and actuator drive with Level start/finish marks, run
+  times, Pause, CSV. *Sensors* - platform and frame bubble levels, readings,
+  and a **reach map** (allowed frame tilt, the Level start line, the frame now,
+  margin computed like the Nano's).
+- **Balance tab**: the wheel drawn from above, to scale, with the arms, where
+  the weight goes, the centre of gravity, and live load cells per arm.
+  **Balance report** with the phone's date and time, the result, tire, weight
+  type and radius, centre of gravity, each arm's load and the platform's level
+  right after the Balance, Mass Comp / Test Weight and firmware: **Save CSV**
+  or **Print / Save PDF**. Nothing is stored on the machine.
+- **Console**: live log of every line to and from the Nano (with times, Save),
+  a command box, and every command from docs/Protocol.md with its
+  description. **Info**: link counters, versions, memory, and the Nano's
+  settings from its last Status, one per row.
+- The Nano's debug streams are switched on only while a page shows them and
+  off ~3 s after; the screen reads Status at link up and after Find Reach /
+  calibration.
+
+Touch screen and both
+- **Load Cell Calibration** (Debug tab, above Find Reach). Touch screen:
+  "Select which load cell to calibrate" (A 210 / B 90 / C 330, ticked when
+  done, any can be skipped; the first pick tares with empty arms), a two-line
+  number pad for the weight (kg or lbs, following the total weight unit), and
+  "Calibrating Load Cell A..." on the leveling page; Done shows the new factors
+  and their change. Web: a Tare row and a row per load cell with Calibrate,
+  then Cancel / Done. Uses the Nano's Tare and CalA/B/C, so each load cell is
+  saved as soon as it is done.
+- **Laser auto-off** 30 s after a Balance unless the Laser button (or Manual
+  Laser) is used first; the web page shows the countdown.
+- **Level Gain Kp slider removed** (touch and web): the gains are tuned once
+  and kept by the Nano; the screen no longer sends or stores `Kp`. Rows below
+  moved up; Enter Speed is 2/3 as tall to match the two speed rows.
+- The touch handlers became shared `do...()` actions used by both screens;
+  screen changes from code all go through the deferred `requestScreen()`.
+- Debug tab bottom: how to open the web page and how many phones are connected.
+
+Build and repo
+- **Partition scheme: Huge APP (3MB No OTA/1MB SPIFFS)** (program ~1.35 MB,
+  over the default 1.25 MB). `Screen/ui/partitions.csv` sets the layout; saved
+  settings and Recents carry over.
+- **Nano libraries bundled** in `Nano/libraries` (MPU6050 1.4.3, HX711 0.6.0)
+  like the screen's: Sketchbook location = `Nano` builds without installing
+  anything. `Tools/build.ps1` builds each board with only the repo's libraries.
 
 ## Nano V0.7.0 + Screen V0.4.0 (2026-11-14) - boards linked, tire tested
 

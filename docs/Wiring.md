@@ -49,6 +49,9 @@ Angles are counter-clockwise from the right, like a normal graph.
 - 45 W is not enough for both actuators at full speed: `MaxSpeed` is capped at
   150 and `Ramp` softens the start-up current.
 - Power-up order: the 12 V supply first.
+- The screen's WiFi (web page) draws short current peaks of about 300 mA from
+  the 5 V converter. If the screen ever restarts by itself while a phone is
+  connected, check that converter first.
 
 ## Screen (JC2432W328C) through a logic level converter
 

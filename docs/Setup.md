@@ -234,7 +234,9 @@ directly); the server side is `Screen/ui/Web.ino`.
 
 ## Tuning the leveling
 
-All of these can be typed while it is running. `Save` keeps them.
+All of these can be typed while it is running (Serial Monitor, or the web
+page's console, which lists every command). `Save` keeps them. The web page's
+Level tab live view (*Leveling*) charts each run while you tune.
 
 | Symptom | Try |
 |---|---|
