@@ -104,7 +104,7 @@ start of the value (`Jog1100` would be `Jog` = 1100).
 
 | Message | Meaning |
 |---|---|
-| `Ready V0.6.0` | Sent once at power-up. The screen re-sends its switch states and tire data. |
+| `Ready V0.7.0` | Sent once at power-up. The screen re-sends its saved settings and tire data. |
 | `Pong` | Answer to `Ping`. |
 | `LevelCompleted` | Platform is level and the actuators are off. |
 | `TareCompleted` | Load cells zeroed. |

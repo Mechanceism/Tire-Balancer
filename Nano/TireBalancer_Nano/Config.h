@@ -3,7 +3,7 @@
 #pragma once
 #include <Arduino.h>
 
-#define FW_VERSION  "0.6.0"
+#define FW_VERSION  "0.7.0"
 #define SERIAL_BAUD 9600        // must match NANO_BAUD in Screen/ui/ui.ino
 
 // ---------------------------------------------------------------- Pins

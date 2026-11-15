@@ -21,7 +21,7 @@
 #include <stdarg.h>
 #include <Preferences.h>         // settings kept in the ESP32's flash (NVS)
 
-#define SCREEN_FW_VERSION "0.3.0"
+#define SCREEN_FW_VERSION "0.4.0"
 
 // ------------------------------------------------------------ Nano link
 // The Nano link uses IO35 (RX) and IO22 (TX), NOT the 4-pin serial

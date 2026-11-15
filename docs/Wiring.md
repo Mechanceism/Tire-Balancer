@@ -4,8 +4,8 @@
 
 | Nano pin | Goes to | Notes |
 |---|---|---|
-| D0 (RX) | Screen TX | Shared with the Nano's USB. |
-| D1 (TX) | Screen RX | Shared with the Nano's USB. 5 V signal into a 3.3 V board - see below. |
+| D0 (RX) | Screen IO22 (via level converter) | Shared with the Nano's USB. |
+| D1 (TX) | Screen IO35 (via level converter) | Shared with the Nano's USB. |
 | D2 / D3 | HX711 **A** DOUT / SCK | Load cell at 210° |
 | D7 / D8 | HX711 **B** DOUT / SCK | Load cell at 90° |
 | D11 / D12 | HX711 **C** DOUT / SCK | Load cell at 330° |
@@ -42,10 +42,13 @@ Angles are counter-clockwise from the right, like a normal graph.
 
 ## Power
 
-- Actuators: their own supply (45 W PD), through the H-bridge drivers.
-- Logic: a dedicated 12 V to 5 V converter feeds the Nano's 5 V pin **and**
-  the screen's 4-pin connector (5 V, GND). The screen is not powered through
-  the Nano's own regulator, which could not handle its current.
+- One 12 V supply (45 W) feeds the actuator H-bridge drivers and a dedicated
+  12 V to 5 V converter. The converter feeds the Nano's 5 V pin **and** the
+  screen's 4-pin connector (5 V, GND). The screen is not powered through the
+  Nano's own regulator, which could not handle its current.
+- 45 W is not enough for both actuators at full speed: `MaxSpeed` is capped at
+  150 and `Ramp` softens the start-up current.
+- Power-up order: the 12 V supply first.
 
 ## Screen (JC2432W328C) through a logic level converter
 
@@ -74,31 +77,26 @@ transmissions. The corner then shows **"RX hears own TX"**.
 With the screen's USB connected, its port (115200 baud) prints a live log:
 `> ` lines sent to the Nano, `< ` lines received, `!` link events.
 
-- **LV must be the ESP32's 3.3 V.** The VCC pin on the CYD's 4-pin serial plug
-  is most likely 5 V: measure it before using it for anything. If the plug has
-  no 3.3 V, take it from another CYD connector that does.
-- Connect only **one** 5 V source to each board. If the screen is powered from
-  the machine through that VCC pin, don't also tie it to the Nano's 5 V.
+- **LV must be the ESP32's 3.3 V.** The screen board's pin header has a 3.3 V
+  pin. The VCC on the 4-pin serial plug is 5 V (power input).
 - Ground must be shared.
 
-### Leaving it connected permanently
+### Uploading with everything connected
 
-That is fine, with these conditions:
-
-- **Uploading to the Nano (USB):** works while the screen is quiet. The screen
-  normally sends `Ping` every 2 s, which would corrupt an upload. It now detects
-  the Nano's bootloader traffic and stops sending for 10 s (the corner shows
-  `Paused: noise on RX`). The first sync attempt can still collide, but avrdude
-  retries. If an upload still fails, switch the screen's power off for the upload.
-- **Uploading to the screen (USB):** works while the Nano is quiet. The Nano
-  only transmits when spoken to (debug streams are off by default) and silently
-  ignores the screen's upload traffic. If you have turned a debug stream on,
-  send `Stop`, `LevelDebugOff` and `ScaleDebugOff` first, or power the Nano off.
+- **Uploading to the screen (USB):** works as normal. The Nano only transmits
+  when spoken to and ignores the screen's upload traffic.
+- **Uploading to the Nano (USB):** the screen's TX, driven through the
+  converter, holds the Nano's RX line, so the PC cannot reach the Nano while
+  the screen is running. Either switch the screen off for the upload, or hold
+  it in reset through its own USB port (RTS asserted, DTR not - this is what
+  `holdesp` did during development), upload, then release it.
+- **Commanding the Nano from a PC** with everything wired: type into the
+  screen's USB port (115200 baud, newline). The screen passes each line on to
+  the Nano and its log shows the replies (`< ` lines). Opening the screen's
+  port restarts the screen, not the Nano.
 - **The computer:** the converter does not connect either board's power to the
-  other's USB, and with one board unpowered it does not back-feed the other.
-  The usual rules still apply: don't feed two 5 V sources into one board, and
-  return the actuator current to its supply on its own heavy wires, not through
-  the logic ground or a USB cable.
+  other's USB. Return the actuator current to its supply on its own heavy
+  wires, not through the logic ground or a USB cable.
 
 ## If the screen cannot hear the Nano
 
@@ -107,34 +105,11 @@ The bottom-left corner of the screen shows the link state:
 | Corner text | Meaning |
 |---|---|
 | `Nano OK` (green) | The screen is hearing valid lines from the Nano. |
-| `No link rx:0 bad:0` | Not a single byte is arriving on the screen's RX pin. |
+| `No link rx:0 bad:0` | Not a single byte is arriving on IO35. |
 | `No link rx:<counting> bad:<counting>` | Bytes arrive but are garbled. |
+| `RX hears own TX` | The converter's LV pin is not on 3.3 V. |
+| `Paused: noise on RX` | Several garbled bytes in a row (e.g. during a Nano upload); sending pauses 10 s. |
 
-What the firmware already does about it: the Nano no longer uses `String`
-(V0.4 had 467 bytes of RAM left and printed text could go missing), never
-blocks, and no longer floods the line with error text. Important messages carry
-a checksum and are repeated until acknowledged.
-
-If it still shows `No link` with the Nano running:
-
-1. Open Serial Monitor on the Nano (wires to the screen disconnected), type
-   `Ping`. `Pong` proves the Nano side is fine.
-2. Reconnect. If `rx` stays at 0 or `bad` climbs, the signal is not arriving
-   cleanly, and the likely reason is electrical: the screen's RX pin (GPIO 3) is
-   also driven by the screen's own USB-serial chip, so the Nano's TX has to
-   overpower it. That fight depends on supply voltage, which would explain why
-   it worked from one USB port and not others, and why a resistor divider
-   (which weakens the Nano's signal) did not help.
-3. The test for that: move only the **screen's RX wire** (on the converter's
-   low side) to a GPIO the USB chip is not connected to. GPIO 35 is input-only
-   and a good choice if your board brings it out (check the silkscreen). Then
-   change one line in `Screen/ui/ui.ino`:
-
-   ```cpp
-   #define NANO_RX_PIN  35
-   ```
-
-   Nothing changes on the Nano, and the screen's TX wire stays where it is.
-
-This is a hypothesis until tested on the machine - the on-screen counters are
-there to confirm or rule it out.
+History: from V0.4 until 2026-11-14 the screen never heard the Nano because
+its RX was on the 4-pin plug's RXD (GPIO 3), which the board's USB-serial chip
+holds high. Moving RX to IO35 (and TX to IO22) fixed it.

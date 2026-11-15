@@ -1,20 +1,51 @@
 # Change Log
 
-## 2026-11-14 - link fixed, power and gyro zero
+## Nano V0.7.0 + Screen V0.4.0 (2026-11-14) - boards linked, tire tested
 
+The boards now talk directly through the level converter, and the machine was
+used end to end from the screen with a 4.80-12 trailer tire. Details in GOALS.md.
+
+Link and power
 - **Screen to Nano link fixed.** The screen's 4-pin RXD/TXD pins are shared
   with its own USB-serial chip, which held RXD high: the screen never heard
-  the Nano (this was the long-standing "esp can't hear the nano" bug). The link
-  now uses IO22 (TX) and IO35 (RX) through the level converter, LV on 3.3 V.
-- Screen: USB log of every line sent/received (115200); only lines the Nano
-  sends count as "link up"; hearing its own Ping shows "RX hears own TX"
-  (what a converter with an unconnected LV pin does).
+  the Nano (the long-standing "esp can't hear the nano" bug). The link now uses
+  IO22 (TX) and IO35 (RX) through the level converter, LV on 3.3 V. The 4-pin
+  connector only powers the screen (5 V from the dedicated 12 V to 5 V converter).
+- Screen: USB log of every line sent/received (115200) and a USB pass-through
+  to the Nano; only lines the Nano sends count as "link up"; hearing its own
+  Ping shows "RX hears own TX" (a converter with its LV pin unconnected).
 - Nano: speed cap MaxSpeed 150 and a start-up Ramp (600 PWM/s) for the 45 W
-  supply; leveling got faster (1.3-1.5 s for 2-3 deg). "Enter Speed" on the
-  screen now saves.
-- Nano: the platform MPU is read all the time and the gyro zero is only
-  learned while the platform is truly still - suspected cause of erratic
-  leveling when started from the screen (to confirm).
+  supply; leveling got faster (1.3-1.5 s for 2-3 deg).
+
+Leveling
+- **Hunting after a cold power-on fixed.** The gyro zero was measured ~0.1 s
+  after power-on, before the MPU had settled (found ~10 deg/s out). Now the
+  MPU is read all the time, no zero is taken at power-on, the gyro is unused
+  until the zero has been learned from one still second, and it is relearned
+  if the platform is still but the gyro still reads > 2 deg/s.
+- **Frame MPU roll was backwards** (BaseAxisX -2 -> 2). The sign had been
+  inferred from the MPUs' Z readings, which disagree with the real motion on
+  these boards; it is now checked by lifting the frame with the actuators off.
+  The reach area was re-measured: allowed frame tilt 10.3-23.5 deg.
+- **Mass Comp redone:** Level weighs the platform first (~0.3 s) against a
+  saved "factory zero" (`SetZero`, empty platform - no Tare needed) and
+  interpolates Kp/Ki/Kd/MinSpeed between the no-load set and a set tuned with
+  the 8.66 kg tire (`LoadRef`, `KpLoad`, ...). Replaces the drive multiplier.
+- New `LaserSet<deg>`: makes the current manual laser angle count as <deg>.
+- Removed the test-only `History`, `Diag`, `TareClear` and `LoopRate` (flash).
+
+Screen
+- Tire size: format dropdown (Metric / Inch / Flotation) and a full-screen
+  number pad with the format's template; Clip-on/Stick-on switch; **Recents**
+  (last 5 different sizes).
+- Settings kept in the screen's flash and sent to the Nano after every
+  handshake; **Restore Factory Defaults**; **Find Reach** button; laser
+  calibration row (-/+ in 1 deg steps and **Set 90**).
+- Fixed: a restart when Level was refused during the screen fade (two screen
+  animations at once); each repeated Nano event is now acted on once; "Paused:
+  noise on RX" needs several bad bytes, not one.
+
+Flash use: Nano 98% (about 390 bytes free).
 
 ## Nano V0.6.0 + Screen V0.3.0 - machine testing (2026-11-12 to 11-13)
 
@@ -30,7 +61,8 @@ Found on the hardware and fixed
 - With both PID outputs at the limit the roll correction was lost; they are
   now scaled together.
 - The frame MPU's roll had the wrong sign relative to the platform MPU (the
-  platform MPU is mounted upside down).
+  platform MPU is mounted upside down). *(Corrected in V0.7.0: this "fix" was
+  itself backwards - see above.)*
 
 New
 - MPU orientation settings in machine axes (`TopAxisX/Y`, `BaseAxisX/Y`),
