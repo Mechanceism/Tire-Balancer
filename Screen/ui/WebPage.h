@@ -98,8 +98,17 @@ td.mono{font:13px ui-monospace,Consolas,monospace;word-break:break-all}
 /* live view */
 .pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
 @media (max-width:520px){.pair{grid-template-columns:1fr}}
-.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:15px;align-content:start}
+.kv{display:grid;grid-template-columns:auto 1fr;column-gap:12px;font-size:15px;align-content:start;border-top:1px solid var(--line)}
+.kv>*{padding:6px 0;border-bottom:1px solid var(--line)}
 .kv span{color:var(--muted)}.kv b{font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
+.kv .end{grid-column:1/-1;border-bottom:0;text-align:right}
+th{text-align:left;font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:12px 4px 4px;border-bottom:1px solid var(--line)}
+details.cmds{border-top:1px solid var(--line)}details.cmds summary{padding:10px 0;font-weight:600;cursor:pointer}
+.cmd{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.cmd code{font:600 14px ui-monospace,Consolas,monospace}.cmd code small{font-weight:400;color:var(--muted)}
+.cmd p{grid-column:1;margin:0;font-size:13px;color:var(--muted)}
+.cmd .acts2{grid-column:2;grid-row:1/span 2;display:flex;gap:6px}
+.cmd .acts2 .btn{min-height:36px;padding:6px 10px;font-size:14px}
 svg text{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .diag{width:100%;height:auto;display:block;max-width:360px;margin:0 auto}
 .cap{text-align:center;font-size:13px;color:var(--muted);margin:4px 0 0}
@@ -147,7 +156,7 @@ svg text{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
           <span>Frame tilt</span><b id="vB">--</b>
           <span>Reach margin</span><b id="vM">--</b>
           <span>Skipped samples</span><b id="vX">--</b>
-          <span></span><div id="mChip" style="text-align:right"></div>
+          <div class="end" id="mChip"></div>
         </div>
       </div>
       <div class="acts">
@@ -165,9 +174,10 @@ svg text{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
         <div><svg class="diag" id="bubT" viewBox="-132 -120 264 240"></svg><p class="cap">Platform (accelerometer only), off level</p></div>
         <div><svg class="diag" id="bubF" viewBox="-132 -120 264 240"></svg><p class="cap">Frame, against true level</p></div>
       </div>
-      <div class="kv" style="margin:10px 0">
+      <div class="kv" style="margin:12px 0">
+        <span>Platform pitch / roll (off level)</span><b id="vT">--</b>
+        <span>Platform gyro X / Y (deg/s)</span><b id="vG">--</b>
         <span>Frame pitch / roll</span><b id="vF">--</b>
-        <span>Platform gyro (deg/s)</span><b id="vG">--</b>
       </div>
       <h2 style="margin-top:14px">Reach map</h2>
       <svg class="diag" id="reach" viewBox="-128 -122 256 254" style="max-width:420px"></svg>
@@ -240,8 +250,6 @@ svg text{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
       <div class="row"><button class="btn" data-step="-1">-</button><input type="range" min="0" max="255" step="1"><button class="btn" data-step="1">+</button></div></div>
     <div class="slider" data-sp="maxSpeed" data-min="0" data-max="255"><div class="top"><span>Max speed (0-255)</span><b></b></div>
       <div class="row"><button class="btn" data-step="-1">-</button><input type="range" min="0" max="255" step="1"><button class="btn" data-step="1">+</button></div></div>
-    <div class="slider" data-sp="kp" data-min="10" data-max="400"><div class="top"><span>Level gain Kp</span><b></b></div>
-      <div class="row"><button class="btn" data-step="-1">-</button><input type="range" min="10" max="400" step="1"><button class="btn" data-step="1">+</button></div></div>
     <div class="row" style="margin-top:6px"><button class="btn primary" id="speedEnter">Enter Speed</button><span id="speedNote" class="muted"></span></div>
   </div>
   <div class="card">
@@ -267,13 +275,12 @@ svg text{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
       <button class="btn" id="logClear">Clear</button><button class="btn" id="logSave">Save</button>
     </div>
     <div class="row" style="margin-top:8px"><input type="text" id="cmd" class="grow" placeholder="Command to the Nano, e.g. Status" autocomplete="off" autocapitalize="off" spellcheck="false" style="font-size:16px"><button class="btn primary" id="cmdSend">Send</button></div>
-    <div class="chips">
-      <button class="btn" data-c="Status">Status</button>
-      <button class="btn" data-c="LevelDebugOn">Level debug on</button><button class="btn" data-c="LevelDebugOff">off</button>
-      <button class="btn" data-c="SensorDebugOn">Sensor debug on</button><button class="btn" data-c="SensorDebugOff">off</button>
-      <button class="btn" data-c="ScaleDebugOn">Scale debug on</button><button class="btn" data-c="ScaleDebugOff">off</button>
-    </div>
-    <p class="muted" style="margin:8px 0 0">&gt; sent to the Nano, &lt; from the Nano, ! screen events. Commands that can move something need the safety tick. Commands: docs/Protocol.md. The live views switch the debug outputs on and off by themselves while they are shown.</p>
+    <p class="muted small" style="margin:8px 0 0">&gt; sent to the Nano, &lt; from the Nano, ! screen events. The live views switch the debug outputs on and off by themselves while they are shown.</p>
+  </div>
+  <div class="card">
+    <h2>Commands</h2>
+    <p class="muted small" style="margin:0 0 6px">As in docs/Protocol.md. Buttons send at once; a command that takes a value goes into the box above for you to type the number, then Send. Anything that can move the platform or switch the laser on needs the safety tick.</p>
+    <div id="cmdList"></div>
   </div>
 </section>
 
@@ -410,7 +417,7 @@ $$('[data-sp]').forEach(el=>{
 });
 function spVal(n){return +document.querySelector('[data-sp="'+n+'"] input').value}
 function speedNote(){$('#speedNote').textContent=Object.keys(spEdited).length?'Not sent yet':''}
-$('#speedEnter').onclick=async()=>{const j=await act('speed','',{min:spVal('minSpeed'),max:spVal('maxSpeed'),kp:spVal('kp')});
+$('#speedEnter').onclick=async()=>{const j=await act('speed','',{min:spVal('minSpeed'),max:spVal('maxSpeed')});
   if(j.ok){for(const k in spEdited)delete spEdited[k];speedNote()}};
 
 // ---------- tire size
@@ -428,6 +435,92 @@ $('#tireEnter').onclick=async()=>{const v=$('#size').value.trim();if(!v){$('#siz
 $('#cmdSend').onclick=async()=>{const c=$('#cmd').value.trim();if(!c)return;const j=await act('cmd',c);if(j.ok)$('#cmd').value=''};
 $('#cmd').onkeydown=e=>{if(e.key=='Enter')$('#cmdSend').click()};
 $$('[data-c]').forEach(b=>b.onclick=()=>act('cmd',b.dataset.c));
+
+// Command list, as in docs/Protocol.md. [name, description, kind]
+//   kind: '' = send as is; ['On','Off',...] = one button per suffix; {u:'unit'} = takes a value
+// SAFE must match SAFE_COMMANDS in Web.ino (the rest need the safety tick).
+const SAFE=new Set(['Ping','Status','LevelDebugOn','LevelDebugOff','SensorDebugOn','SensorDebugOff','ScaleDebugOn','ScaleDebugOff','Stop','LevelCancel','BalanceCancel','LaserOff','ManualLaserOff','Ack']);
+const OO=['On','Off'];
+const CMDS=[
+ ['Actions',[
+  ['Level','Start leveling. Ends with LevelCompleted (Auto Stop on) or runs until cancelled.'],
+  ['LevelCancel','Stop leveling.'],
+  ['Tare','Zero the load cells (arms empty). Needed once after every power-up before Balance or Cal.'],
+  ['SetZero','Save the factory zero (empty platform, arms on) that Level weighs against for Mass Comp. Redo if the arms change.'],
+  ['FindReach','Moves the platform to all four end-stops, saves how far it can tilt, then levels. About 45 s; remove the tire.'],
+  ['Balance','Weigh, calculate, switch the laser on. Ends with BalanceCompleted.'],
+  ['BalanceCancel','Abort a Tare / Balance / Cal that is still measuring.'],
+  ['Stop','Stop everything (actuators and measuring).'],
+  ['Ping','The Nano answers Pong.'],
+  ['Ack','"Got your event, stop repeating it."'],
+  ['Status','Print all settings (only while idle).'],
+  ['Save','Store the tuning values in EEPROM.'],
+  ['Defaults','Back to the built-in values (and save them).']]],
+ ['Switches',[
+  ['AutoStop','Off = keep hunting for level forever.',OO],
+  ['MassComp','Weigh first, then use leveling gains for that load.',OO],
+  ['TestMass','Add TestMass kg to every load cell (bench testing).',OO],
+  ['Laser','Laser and servo pointing at the last balance result.',['On','Off','Toggle']],
+  ['ManualLaser','Point at LaserAngle instead of the result.',OO],
+  ['LevelDebug','# P: R: B: A: X: M: lines, 10 a second.',OO],
+  ['SensorDebug','# T: F: G: Z: lines, 10 a second.',OO],
+  ['ScaleDebug','# W: T: Ang: M: lines, 2 a second.',OO]]],
+ ['Values',[
+  ['RimD','Rim diameter (not saved).',{u:'mm'}],
+  ['TreadW','Tread / section width (not saved).',{u:'mm'}],
+  ['SideWall','Aspect ratio (not saved).',{u:'%'}],
+  ['WeightR','Radius where the balance weight goes; 0 = rim radius (not saved).',{u:'mm'}],
+  ['MinSpeed','Lowest PWM that still moves the actuators.',{u:'PWM 0-255'}],
+  ['MaxSpeed','Speed cap (150 for the 45 W supply).',{u:'PWM 0-255'}],
+  ['Ramp','How fast an actuator may speed up; 0 = instantly.',{u:'PWM/s'}],
+  ['Kp','PID proportional gain.',{u:'PWM/deg'}],
+  ['Ki','PID integral gain.',{u:'PWM/deg·s'}],
+  ['Kd','PID derivative gain (0 = PI).',{u:'PWM/(deg/s)'}],
+  ['LoadRef','Load the *Load gains were tuned at.',{u:'kg'}],
+  ['KpLoad','Kp with LoadRef kg on the platform.',{u:''}],
+  ['KiLoad','Ki with LoadRef kg on the platform.',{u:''}],
+  ['KdLoad','Kd with LoadRef kg on the platform.',{u:''}],
+  ['MinSpeedLoad','MinSpeed with LoadRef kg on the platform.',{u:'PWM'}],
+  ['Gyro','Gyro blending; 0 = accelerometer only, 0.98 tuned.',{u:'0-0.995'}],
+  ['Alpha','Angle smoothing, only used with Gyro0.',{u:'0-0.99'}],
+  ['LevelTol','Pitch and roll must both be inside this to count as level.',{u:'deg'}],
+  ['PitchOffset','Platform sensor pitch when truly level.',{u:'deg'}],
+  ['RollOffset','Platform sensor roll when truly level.',{u:'deg'}],
+  ['PitchTrim','Fine adjustment, added to the offset (not saved).',{u:'deg'}],
+  ['RollTrim','Fine adjustment, added to the offset (not saved).',{u:'deg'}],
+  ['LaserOffset','Servo zero vs. platform zero.',{u:'deg'}],
+  ['LaserAngle','Target in manual laser mode (not saved).',{u:'deg'}],
+  ['LaserSet','"The laser now points at the real n degrees" (saves).',{u:'deg'}],
+  ['TestMass','Amount added per load cell while TestMass is on.',{u:'kg'}],
+  ['CalA','Calibrate load cell A (210°) with this mass on its arm.',{u:'kg'}],
+  ['CalB','Calibrate load cell B (90°).',{u:'kg'}],
+  ['CalC','Calibrate load cell C (330°).',{u:'kg'}],
+  ['JogLeft','Run actuator 1 (left, 150°) for JogTime; + = up.',{u:'signed PWM'}],
+  ['JogRight','Run actuator 2 (right, 30°) for JogTime; + = up.',{u:'signed PWM'}],
+  ['JogTime','Jog length, 100-40000.',{u:'ms'}],
+  ['TopAxisX','Platform MPU: sensor axis along machine +X (0°).',{u:'±1..3'}],
+  ['TopAxisY','Platform MPU: sensor axis along machine +Y (90°).',{u:'±1..3'}],
+  ['BaseAxisX','Frame MPU: sensor axis along machine +X.',{u:'±1..3'}],
+  ['BaseAxisY','Frame MPU: sensor axis along machine +Y.',{u:'±1..3'}]]],
+];
+(function(){
+  const box=$('#cmdList');
+  CMDS.forEach(([sec,list],i)=>{
+    const d=document.createElement('details');d.className='cmds';d.open=i==0;
+    d.innerHTML='<summary>'+sec+' <span class="muted small">('+list.length+')</span></summary>';
+    list.forEach(([name,desc,kind])=>{
+      const r=document.createElement('div');r.className='cmd';
+      const value=kind&&!Array.isArray(kind);
+      r.innerHTML='<code>'+name+(value?'<small>&lt;n&gt; '+esc(kind.u)+'</small>':Array.isArray(kind)?'<small>'+kind.join(' / ')+'</small>':'')+'</code><p>'+esc(desc)+'</p><div class="acts2"></div>';
+      const a=r.querySelector('.acts2');
+      const btn=(label,cmd)=>{const b=document.createElement('button');b.className='btn';b.textContent=label;
+        if(cmd&&!SAFE.has(cmd))b.dataset.g='';b.onclick=()=>{if(cmd)act('cmd',cmd);else{const c=$('#cmd');c.value=name;c.focus();c.setSelectionRange(name.length,name.length);c.scrollIntoView({block:'center'})}};a.appendChild(b)};
+      if(value)btn('Type value',null);
+      else if(Array.isArray(kind))kind.forEach(s=>btn(s,name+s));
+      else btn('Send',name);
+      d.appendChild(r)});
+    box.appendChild(d)});
+})();
 $('#logClear').onclick=()=>{LOG.length=0;drawLog(true)};
 $('#logSave').onclick=()=>saveFile('tire-balancer-log.txt',LOG.map(l=>fmt(l.t/1000,3).padStart(10)+'  '+l.s[0]+' '+l.s.slice(1)).join('\n')+'\n','text/plain');
 ['fDebug','fPing'].forEach(id=>$('#'+id).onchange=()=>drawLog(true));
@@ -448,7 +541,7 @@ function drawLog(all,added){
 // Live data: parsed from the Nano's debug lines in the log
 // =====================================================================
 const LV=[], SN=[], KEEP_MS=120000, WIN_MS=20000;
-let lastScale=null, liveMode=load('live')||'level', paused=false, pausedEnd=0, espNow=0;
+let lastScale=null, liveMode='off', paused=false, pausedEnd=0, espNow=0;   // live view starts off every time
 const RUNS=[], MARKS=[]; let runStart=null;
 const RE_L=/^# P:(-?[\d.]+) R:(-?[\d.]+) B:(-?[\d.]+) A:(-?\d+),(-?\d+) X:(\d+) M:(-?[\d.]+)/;
 const RE_S=/^# T:(-?[\d.]+),(-?[\d.]+) F:(-?[\d.]+),(-?[\d.]+) G:(-?\d+),(-?\d+)/;
@@ -577,7 +670,7 @@ const chAng=makeChart($('#chAng'),'Platform off level (deg)',[{k:'p',label:'Pitc
 const chAct=makeChart($('#chAct'),'Actuator drive (PWM, + = up)',[{k:'a1',label:'Actuator 1 (150°)',c:'--s1'},{k:'a2',label:'Actuator 2 (30°)',c:'--s2'}],
   {minHalf:50,clamp:255,fmt:v=>sgn(v,0)});
 
-$$('#liveSeg button').forEach(b=>b.onclick=()=>{liveMode=b.dataset.v;store('live',liveMode);drawLive()});
+$$('#liveSeg button').forEach(b=>b.onclick=()=>{liveMode=b.dataset.v;drawLive()});
 $('#lvPause').onclick=()=>{paused=!paused;pausedEnd=espNow;$('#lvPause').textContent=paused?'Resume':'Pause';drawLive()};
 $('#lvClear').onclick=()=>{LV.length=0;SN.length=0;MARKS.length=0;drawLive()};
 $('#lvCsv').onclick=()=>{
@@ -605,7 +698,7 @@ function drawLive(){
   const on=S&&S.streams;
   const fresh=(arr)=>arr.length&&espNow-arr[arr.length-1].t<1500;
   let wait='';
-  if(liveMode=='off')wait='Live view is off: the Nano sends no debug data for it.';
+  if(liveMode=='off')wait='Off. Choose Leveling (bubble level, actuators, charts) or Sensors (platform and frame, reach map); the Nano then sends live data while this view is open.';
   else if(liveMode=='level'&&!fresh(LV))wait=S&&!S.link?'No link to the Nano.':'Waiting for data from the Nano...';
   else if(liveMode=='sensor'&&!fresh(SN))wait=S&&!S.link?'No link to the Nano.':'Waiting for data from the Nano...';
   $('#liveWait').textContent=wait;
@@ -623,6 +716,7 @@ function drawLive(){
     const tp=(st.po||0)+(S?S.pitchTrim/10:0), tr=(st.ro||0)+(S?S.rollTrim/10:0);
     bubbleSet($('#bubT'),ok?p.tp-tp:null,ok?p.tr-tr:null);
     bubbleSet($('#bubF'),ok?p.fp:null,ok?p.fr:null);
+    $('#vT').textContent=ok?sgn(p.tp-tp,2)+'° / '+sgn(p.tr-tr,2)+'°':'--';
     $('#vF').textContent=ok?sgn(p.fp,1)+'° / '+sgn(p.fr,1)+'°':'--';
     $('#vG').textContent=ok?sgn(p.gx,1)+' / '+sgn(p.gy,1):'--';
     reachDraw(ok?p:null,st,tp,tr);
@@ -803,8 +897,44 @@ function render(j){
     ['Debug streams on',['Level','Sensor','Scale'].filter((n,i)=>j.streams[i]).join(', ')||'none']]);
   table('#infoScreen',[['Screen firmware','V'+esc(j.fw)],['Running for',upTime(j.up)],['Free memory',Math.round(j.heap/1024)+' KB (lowest '+Math.round(j.minHeap/1024)+' KB)'],
     ['Phones connected',j.sta],['WiFi','TireBalancer (open), 192.168.4.1']]);
-  const sl=j.status.filter(Boolean);
-  table('#infoStatus',sl.length?sl.map(l=>{const m=/^(\S+(?: mm)?)\s(.*)$/.exec(l);return m?[esc(m[1]),esc(m[2]),1]:['',esc(l),1]}):[['','Not read yet - press Read again (the Nano answers when idle).']]);
+  const rows=statusRows(j.status);
+  $('#infoStatus').innerHTML=rows.length?rows.map(r=>r.length==1?'<tr><th colspan="2">'+r[0]+'</th></tr>':'<tr><td>'+r[0]+'</td><td>'+esc(r[1])+'</td></tr>').join('')
+    :'<tr><td>Not read yet - press Read again (the Nano answers when idle).</td></tr>';
+}
+// The Nano's Status lines, one setting per row: [group] or [label, value]
+function statusRows(lines){
+  const out=[], find=re=>{for(const l of lines){const m=re.exec(l);if(m)return m}return null};
+  const N=(v,d)=>{const x=parseFloat(v);return isFinite(x)?(d==null?String(x):x.toFixed(d)):v}, onoff=v=>v=='1'?'On':'Off';
+  const group=(title,items)=>{const r=items.filter(x=>x);if(r.length){out.push([title]);out.push(...r)}};
+  let m;
+  group('Leveling',[
+    (m=find(/^PitchOffset (\S+) RollOffset (\S+)/))&&['Pitch offset',N(m[1],2)+'°'], m&&['Roll offset',N(m[2],2)+'°'],
+    (m=find(/^MinSpeed (\S+) MaxSpeed (\S+)/))&&['Min speed',N(m[1])+' PWM'], m&&['Max speed',N(m[2])+' PWM'],
+    (m=find(/^Gyro (\S+) Ramp (\S+)/))&&['Ramp',N(m[2])+' PWM/s'], m&&['Gyro blending',N(m[1],2)],
+    (m=find(/^Alpha (\S+) LevelTol (\S+)/))&&['Level tolerance',N(m[2],2)+'°'], m&&['Alpha (angle smoothing)',N(m[1],2)],
+  ]);
+  group('Leveling gains, no load',[
+    (m=find(/^Kp (\S+) Ki (\S+) Kd (\S+)/))&&['Kp',N(m[1])], m&&['Ki',N(m[2])], m&&['Kd',N(m[3])],
+  ]);
+  m=find(/^At (\S+) kg: Kp (\S+) Ki (\S+) Kd (\S+) MinSpeed (\S+)/);
+  group(m?'Leveling gains at '+N(m[1])+' kg (Mass Comp)':'Leveling gains, loaded',[
+    m&&['Kp',N(m[2])], m&&['Ki',N(m[3])], m&&['Kd',N(m[4])], m&&['Min speed',N(m[5])+' PWM'],
+  ]);
+  m=find(/^Reach (\S+) (\S+) (\S+) (\S+)/);
+  group('Reach area (corner angles c1, c2)',m?[1,2,3,4].map(i=>['Corner '+i,m[i].replace(',',', ')+'°']):[]);
+  m=find(/^Axes top (\S+) base (\S+)/);
+  group('MPU mounting',[m&&['Platform (TopAxisX, Y)',m[1].replace(',',', ')], m&&['Frame (BaseAxisX, Y)',m[2].replace(',',', ')]]);
+  group('Load cells',[
+    (m=find(/^Cal (\S+) (\S+) (\S+)/))&&['Calibration A (210°)',m[1]], m&&['Calibration B (90°)',m[2]], m&&['Calibration C (330°)',m[3]],
+    (m=find(/^Zero (\S+) (\S+) (\S+)/))&&['Factory zero A',m[1]], m&&['Factory zero B',m[2]], m&&['Factory zero C',m[3]],
+    (m=find(/TestMass (\S+)/))&&['Test mass',N(m[1],2)+' kg'],
+  ]);
+  group('Laser',[(m=find(/^LaserOffset (\S+)/))&&['Laser offset',N(m[1],1)+'°']]);
+  m=find(/^Tire mm RimD (\S+) TreadW (\S+) SideWall (\S+) WeightR (\S+)/);
+  group('Tire (as the Nano has it)',m?[['Rim diameter',m[1]+' mm'],['Tread width',m[2]+' mm'],['Sidewall (aspect ratio)',m[3]+' %'],['Weight radius',m[4]+' mm']]:[]);
+  m=find(/^AutoStop (\S+) MassComp (\S+) TestMassOn (\S+)/);
+  group('Switches',m?[['Auto Stop',onoff(m[1])],['Mass Comp',onoff(m[2])],['Test Weight',onoff(m[3])]]:[]);
+  return out;
 }
 // While leveling and the live view is open, show progress on the Level tab
 // instead of covering the charts with the busy pop-up.

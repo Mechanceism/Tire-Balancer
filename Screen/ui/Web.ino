@@ -258,7 +258,6 @@ static void webState() {
   jInt(o, "rollTrim", lv_slider_get_value(ui_RollOffsetSlider));
   jInt(o, "minSpeed", enteredMin);
   jInt(o, "maxSpeed", enteredMax);
-  jInt(o, "kp", enteredKp);
 
   // pop-ups
   jKey(o, "note"); o += '['; o += noteId; o += ','; jStr(o, noteText); o += ']';
@@ -395,10 +394,9 @@ static void webDo() {
   else if (a == "testMass")      { tapSwitch(ui_TestWeightSwitch, on); }
   else if (a == "grams")         { tapSwitch(ui_TestWeightSwitch1, on); }
   else if (a == "lbs")           { tapSwitch(ui_TestWeightSwitch2, on); }
-  else if (a == "speed") {                            // Enter Speed: min, max, kp
+  else if (a == "speed") {                            // Enter Speed: min, max
     dragSlider(ui_MinSpeedSlider, web.arg("min").toInt());
     dragSlider(ui_MaxSpeedSlider, web.arg("max").toInt());
-    dragSlider(ui_SpeedCurveSlider, web.arg("kp").toInt());
     doSpeedEnter();
   }
   else if (a == "restore")       { doRestoreDefaults(); }

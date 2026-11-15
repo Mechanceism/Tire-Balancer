@@ -76,7 +76,7 @@ struct TireSize { float widthMm, sideMm, rimMm; };
 // tuned on the machine, 2026-11-14). Manual Laser and Test Weight are not kept.
 struct ScreenPrefs {
   int16_t pitchTrim, rollTrim;           // tenths of a degree
-  int16_t minSpeed, maxSpeed, kp;        // as last sent with Enter Speed
+  int16_t minSpeed, maxSpeed;            // as last sent with Enter Speed
   bool    massComp, autoStop;
   bool    grams, lbs;                    // units: added weight in g, total weight in lbs
   bool    stickOn;                       // Tire Info: Stick-on (else Clip-on)
@@ -288,7 +288,7 @@ void logEvent(const char *text) {
   webLog('!', text);
 }
 
-// Queue a command, printf style: nanoSend("Kp%d", 30);
+// Queue a command, printf style: nanoSend("MinSpeed%d", 20);
 void nanoSend(const char *fmt, ...) {
   if (txqCount >= TXQ_SIZE) return;                  // queue full: drop (should never happen)
   va_list args;
@@ -514,9 +514,9 @@ static void sendSwitches() {
 }
 
 // ---- settings kept in the ESP32's flash
-static const ScreenPrefs PREF_DEFAULTS = {0, 0, 20, 150, 300, true, true, false, false, false};
+static const ScreenPrefs PREF_DEFAULTS = {0, 0, 20, 150, true, true, false, false, false};
 static Preferences prefs;
-static int16_t  enteredMin = 20, enteredMax = 150, enteredKp = 300;   // last Enter Speed
+static int16_t  enteredMin = 20, enteredMax = 150;   // last Enter Speed
 static uint32_t prefsDirtyAt = 0;
 
 static void setChecked(lv_obj_t *o, bool on) {
@@ -534,7 +534,6 @@ static void prefsLoad(ScreenPrefs &p) {
   p.rollTrim  = prefs.getShort("rt", d.rollTrim);
   p.minSpeed  = prefs.getShort("min", d.minSpeed);
   p.maxSpeed  = prefs.getShort("max", d.maxSpeed);
-  p.kp        = prefs.getShort("kp", d.kp);
   p.massComp  = prefs.getBool("mc", d.massComp);
   p.autoStop  = prefs.getBool("as", d.autoStop);
   p.grams     = prefs.getBool("g", d.grams);
@@ -549,10 +548,8 @@ static void prefsApply(const ScreenPrefs &p) {
   setSlider(ui_RollOffsetSlider, ui_RollOffsetValueLabel, p.rollTrim);
   setSlider(ui_MinSpeedSlider, ui_MinSpeedValueLabel, p.minSpeed);
   setSlider(ui_MaxSpeedSlider, ui_MaxSpeedValueLabel, p.maxSpeed);
-  setSlider(ui_SpeedCurveSlider, ui_SpeedCurveValueLabel, p.kp);
   enteredMin = p.minSpeed;
   enteredMax = p.maxSpeed;
-  enteredKp  = p.kp;
   setChecked(ui_MassCompSwitch, p.massComp);
   setChecked(ui_AutoStopCheckbox, p.autoStop);
   setChecked(ui_TestWeightSwitch1, p.grams);
@@ -569,7 +566,6 @@ static void prefsWriteNow() {
   prefs.putShort("rt", lv_slider_get_value(ui_RollOffsetSlider));
   prefs.putShort("min", enteredMin);
   prefs.putShort("max", enteredMax);
-  prefs.putShort("kp", enteredKp);
   prefs.putBool("mc", isChecked(ui_MassCompSwitch));
   prefs.putBool("as", isChecked(ui_AutoStopCheckbox));
   prefs.putBool("g", isChecked(ui_TestWeightSwitch1));
@@ -589,7 +585,6 @@ static void syncNano() {
   sendSwitches();
   nanoSend("MinSpeed%d", enteredMin);
   nanoSend("MaxSpeed%d", enteredMax);
-  nanoSend("Kp%d", enteredKp);
   nanoSend("PitchTrim%.1f", lv_slider_get_value(ui_PitchOffsetSlider) / 10.0f);
   nanoSend("RollTrim%.1f", lv_slider_get_value(ui_RollOffsetSlider) / 10.0f);
   nanoSend("LaserAngle%d", (int)lv_slider_get_value(ui_ManualLaserAngleSlider));
@@ -883,10 +878,8 @@ bool doTireEnter() {
 void doSpeedEnter() {
   enteredMin = lv_slider_get_value(ui_MinSpeedSlider);
   enteredMax = lv_slider_get_value(ui_MaxSpeedSlider);
-  enteredKp  = lv_slider_get_value(ui_SpeedCurveSlider);               // re-labelled "Level Gain Kp"
   nanoSend("MinSpeed%d", enteredMin);
   nanoSend("MaxSpeed%d", enteredMax);
-  nanoSend("Kp%d", enteredKp);
   nanoSend("Save");                       // also kept by the Nano, for use without the screen
   prefsDirty();
   statusNote("Speeds saved");
@@ -1267,13 +1260,15 @@ static void setupExtraWidgets() {
   lv_obj_add_flag(tirePad, LV_OBJ_FLAG_HIDDEN);
   showTireResult();
 
-  // Debug tab: the old "Speed Curve Exp." slider is now the leveling PID gain.
+  // Debug tab: the old "Speed Curve Exp." row (last used for the leveling gain
+  // Kp) is hidden - Kp is tuned on the Nano and a user never needs to change
+  // it (the Kp command still works from a PC or the web console). Everything
+  // below it moves up one row: 25% of the tab, the same as the SquareLine
+  // spacing between the Kp row and Units.
+  lv_obj_t *kpRow[] = {ui_SpeedCurveSlider, ui_SpeedCurveSliderLabel, ui_SpeedCurveValueLabel};
+  for (lv_obj_t *o : kpRow) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
   // Slider start values match the Nano's tuned defaults (Settings.ino), so
   // pressing "Enter Speed" without moving them changes nothing.
-  lv_label_set_text(ui_SpeedCurveSliderLabel, "Level Gain Kp");
-  lv_slider_set_range(ui_SpeedCurveSlider, 10, 400);
-  lv_slider_set_value(ui_SpeedCurveSlider, 300, LV_ANIM_OFF);
-  lv_label_set_text(ui_SpeedCurveValueLabel, "300");
   lv_slider_set_value(ui_MinSpeedSlider, 20, LV_ANIM_OFF);
   lv_label_set_text(ui_MinSpeedValueLabel, "20");
   lv_slider_set_value(ui_MaxSpeedSlider, 150, LV_ANIM_OFF);
@@ -1303,6 +1298,19 @@ static void setupExtraWidgets() {
   lv_obj_t *restoreLbl = lv_label_create(restoreBtn);
   lv_label_set_text(restoreLbl, "Restore Factory Defaults");
   lv_obj_center(restoreLbl);
+
+  // Close the gap the hidden Kp row left: everything below it (Units, Find
+  // Reach, Restore) moves up by one row. Positions are still lv_pct() here;
+  // the laser re-layout below then works from the moved positions.
+  {
+    const int32_t KP_ROW_PCT = 115, ROW_PCT = 25;     // Kp label row; Kp label -> Units label
+    uint32_t n = lv_obj_get_child_cnt(ui_Debug_Tab);
+    for (uint32_t i = 0; i < n; i++) {
+      lv_obj_t *c = lv_obj_get_child(ui_Debug_Tab, i);
+      lv_coord_t y = lv_obj_get_style_y(c, LV_PART_MAIN);
+      if (LV_COORD_IS_PCT(y) && LV_COORD_GET_PCT(y) > KP_ROW_PCT) lv_obj_set_y(c, lv_pct(LV_COORD_GET_PCT(y) - ROW_PCT));
+    }
+  }
 
   // Debug tab, top re-laid out for laser calibration:
   //   [Manual Laser]  [Set 90]

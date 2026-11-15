@@ -114,16 +114,20 @@ that load cell and about zero on the other two.
 
 The screen keeps these in its own flash and sends them to the Nano after every
 handshake (power-on, Nano restart), so they survive a power cycle: Pitch/Roll
-Trim, Min/Max Speed and Level Gain Kp (as last sent with **Enter Speed**), Mass
-Comp, Auto Stop, the units switches and Clip-on/Stick-on. Changes are saved
-about 1.5 s after the last touch. Not kept on purpose: Manual Laser (so the
-laser never switches itself on at boot) and Test Weight (a bench-test fake
-load that would skew every result).
+Trim, Min/Max Speed (as last sent with **Enter Speed**), Mass Comp, Auto Stop,
+the units switches and Clip-on/Stick-on. Changes are saved about 1.5 s after
+the last touch. Not kept on purpose: Manual Laser (so the laser never switches
+itself on at boot) and Test Weight (a bench-test fake load that would skew
+every result).
+
+The leveling gains (`Kp`, `Ki`, `Kd` and the loaded set) are not on the
+screens: they are tuned once and kept by the Nano. Change them from a PC or the
+web page's console if the machine is ever re-tuned (see "Tuning the leveling").
 
 **Restore Factory Defaults** (bottom of the Debug tab) puts those back to the
-tuned values - trims 0, Min 20, Max 150, Kp 300, Mass Comp on, Auto Stop on,
-oz / kg, Clip-on - and sends them to the Nano. Calibration, the reach area, the
-factory zero and the Recents list are not touched.
+tuned values - trims 0, Min 20, Max 150, Mass Comp on, Auto Stop on, oz / kg,
+Clip-on - and sends them to the Nano. Calibration, the reach area, the factory
+zero and the Recents list are not touched.
 
 **Recents** (Tire Info tab, scroll down): the last 5 different sizes entered,
 newest first. Tap one to fill in the format and size, then press **Enter**.
@@ -159,7 +163,8 @@ Debug) plus:
   It clears itself after 5 minutes unused or when the WiFi link drops.
 - **Tire Info**: type the size with the phone's keyboard (format is found
   automatically); it shows what the size means as you type.
-- **Level tab, Live view** (choose *Leveling*, *Sensors* or *Off*):
+- **Level tab, Live view** (choose *Leveling*, *Sensors* or *Off*; it starts
+  Off each time the page opens):
   - *Leveling*: a bubble level of the platform's distance from level (the dot
     sits on the high side; rings at 0.1, 1 and 2 deg), frame tilt, reach margin
     with "Level can start / Close to the limit / Too steep", both actuators'
@@ -176,9 +181,11 @@ Debug) plus:
   goes (with grams/oz) and the centre of gravity (enlarged). With **Live load
   cells** on, the arms show their kg and the drawing follows the load live.
 - **Console**: every line sent to and received from the Nano, a box to type
-  commands (see [Protocol.md](Protocol.md)), quick buttons for `Status` and
-  the debug outputs, and **Save** to download the log as a text file.
-- **Info**: link counters, firmware versions, uptime, free memory.
+  commands, **Save** to download the log (with times) as a text file, and
+  the full command list from [Protocol.md](Protocol.md) with a short
+  description each: tap to send, or to put a value command in the box.
+- **Info**: link counters, firmware versions, uptime, free memory, and the
+  Nano's settings from its last `Status`, one per row.
 
 The touch screen and the page always agree: a change on either shows on the
 other (and on every connected phone) within a second, and anything started

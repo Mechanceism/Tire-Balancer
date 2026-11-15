@@ -25,6 +25,13 @@
   them, keeps the Nano's Status lines (read at link up and after Find Reach;
   listed on the Info tab), and timestamps every log line (Save in the console
   now includes times).
+- After phone testing: Live view starts Off; Sensors readings in ruled rows
+  (now with platform pitch/roll); the console lists every command from
+  Protocol.md with a description; the Info tab shows the Nano's Status one
+  setting per row, grouped.
+- **Level Gain Kp slider removed** from the touch screen and the web page (the
+  rows below move up). The screen no longer sends or stores `Kp`; the Nano's
+  saved, tuned gains are used. `Kp` still works as a command.
 - Needs the **Huge APP** partition scheme (program ~1.3 MB);
   `Screen/ui/partitions.csv` sets the layout. Saved settings carry over.
 
