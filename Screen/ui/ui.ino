@@ -698,6 +698,7 @@ static void handleNanoLine(char *line) {
       waiting = WAIT_NONE;
       backToOptionMenu();
       statusNote(reachRunning ? "Limits saved, level" : "Level done");
+      if (reachRunning) webReachChanged();          // the web page's reach map reads the new limits
       reachRunning = false;
     }
   }

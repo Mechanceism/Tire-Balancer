@@ -33,6 +33,7 @@ static DNSServer dns;
 static uint32_t  webBootId = 0;      // changes every restart, so the page knows to clear its log
 
 static char     webLogBuf[WEB_LOG_LINES][WEB_LOG_LEN];
+static uint32_t webLogT[WEB_LOG_LINES];   // millis() of each line: the page's charts use it
 static uint32_t webLogSeq = 0;       // lines ever logged; line n is in webLogBuf[n % WEB_LOG_LINES]
 
 static uint32_t noteId = 0, msgId = 0;
@@ -42,13 +43,39 @@ static char     nanoVersion[16] = "";
 
 static lv_obj_t *wifiLabel = NULL;   // Debug tab: how to open the page
 
+// ---- The Nano's Status lines, remembered so every phone can use them (reach
+// map, level tolerance...). Key = how the line starts; must = a second word
+// that tells a Status line from a command's echo ("# Kp 300.00").
+#define ST_REACH 9
+static const char *const STATUS_KEY[][2] = {
+  {"Cal ", ""}, {"PitchOffset ", "RollOffset"}, {"MinSpeed ", "MaxSpeed"}, {"Kp ", " Ki "},
+  {"At ", "kg:"}, {"Zero ", ""}, {"Alpha ", "LevelTol"}, {"Gyro ", "Ramp"}, {"Axes ", "base"},
+  {"Reach ", ""}, {"LaserOffset ", "TestMass"}, {"Tire mm ", ""}, {"AutoStop ", "MassComp"},
+};
+#define STATUS_N (sizeof(STATUS_KEY) / sizeof(STATUS_KEY[0]))
+static char     statusLine[STATUS_N][80];
+static uint32_t statusAskedMs = 0;
+
+// ---- Debug streams. The Nano's link (9600 baud) carries about one 10-per-
+// second stream comfortably, so a stream is only on while some phone is
+// showing it: each poll says what it shows (want=level,sensor,scale), and a
+// stream nobody has asked for in STREAM_HOLD_MS is switched off again.
+#define STREAM_N       3
+#define STREAM_HOLD_MS 3000
+static const char *const STREAM_CMD[STREAM_N] = {"LevelDebug", "SensorDebug", "ScaleDebug"};
+static const char *const STREAM_WANT[STREAM_N] = {"level", "sensor", "scale"};
+static uint32_t streamWantMs[STREAM_N] = {0, 0, 0};
+static bool     streamOn[STREAM_N] = {false, false, false};   // switched on by the web page
+
 // ------------------------------------------------------------ hooks called from ui.ino
 // kind: '>' sent to the Nano, '<' heard from the Nano, '!' event
 void webLog(char kind, const char *text) {
-  char *d = webLogBuf[webLogSeq % WEB_LOG_LINES];
+  uint32_t i = webLogSeq % WEB_LOG_LINES;
+  char *d = webLogBuf[i];
   d[0] = kind;
   strncpy(d + 1, text, WEB_LOG_LEN - 2);
   d[WEB_LOG_LEN - 1] = 0;
+  webLogT[i] = millis();
   webLogSeq++;
 }
 
@@ -63,19 +90,59 @@ void webMessage(const char *title, const char *text) {
   msgId++;
 }
 
-// Every valid line from the Nano: "Ready V0.7.0" (restart) or "# V0.7.0" (Status)
+static bool statusLineOk(uint8_t k, const char *body) {
+  const char *rest = body + strlen(STATUS_KEY[k][0]);
+  if (STATUS_KEY[k][1][0] && !strstr(body, STATUS_KEY[k][1])) return false;
+  if (k == ST_REACH) {                               // "Reach a,b c,d e,f g,h" (FindReach also prints single corners)
+    uint8_t commas = 0;
+    for (const char *p = rest; *p; p++) if (*p == ',') commas++;
+    return commas == 4;
+  }
+  if (!STATUS_KEY[k][1][0] && k != 11) return (*rest >= '0' && *rest <= '9') || *rest == '-';   // "Zero saved" is not one
+  return true;
+}
+
+// Every valid line from the Nano: "Ready V0.7.0" (restart), "# V0.7.0" and
+// the other Status lines.
 void webNanoLine(const char *line) {
   const char *v = NULL;
-  if (!strncmp(line, "Ready V", 7)) v = line + 7;
+  if (!strncmp(line, "Ready V", 7)) {
+    v = line + 7;
+    for (uint8_t i = 0; i < STREAM_N; i++) streamOn[i] = false;   // a restarted Nano has its debug streams off
+  }
   else if (!strncmp(line, "# V", 3) && line[3] >= '0' && line[3] <= '9') v = line + 3;
-  if (v) strncpy(nanoVersion, v, sizeof(nanoVersion) - 1);
+  if (v) { strncpy(nanoVersion, v, sizeof(nanoVersion) - 1); return; }
+
+  if (strncmp(line, "# ", 2)) return;
+  const char *body = line + 2;
+  for (uint8_t k = 0; k < STATUS_N; k++) {
+    if (strncmp(body, STATUS_KEY[k][0], strlen(STATUS_KEY[k][0])) || !statusLineOk(k, body)) continue;
+    strncpy(statusLine[k], body, sizeof(statusLine[k]) - 1);
+    return;
+  }
+}
+
+// Ask the Nano for Status (it only answers when idle, and it is long: not
+// more often than every 15 s unless forced).
+static void webAskStatus(bool force) {
+  uint32_t now = millis();
+  if (!linkUp || waiting != WAIT_NONE) return;
+  if (!force && statusAskedMs && now - statusAskedMs < 15000) return;
+  statusAskedMs = now | 1;
+  nanoSend("Status");
 }
 
 // The link has just come up. The Nano only says its version when it starts
 // ("Ready V...") or in Status; if the screen started after the Nano it has
-// heard neither, so ask once.
+// heard neither, so ask (this also fills in the reach area etc.).
 void webLinkUp() {
-  if (!nanoVersion[0]) nanoSend("Status");
+  if (!nanoVersion[0] || !statusLine[ST_REACH][0]) webAskStatus(true);
+}
+
+// FindReach has saved a new reach area: read it again.
+void webReachChanged() {
+  statusLine[ST_REACH][0] = 0;
+  webAskStatus(true);
 }
 
 // ------------------------------------------------------------ JSON helpers
@@ -120,8 +187,14 @@ static void tireDescribe(const char *size, char *out, size_t len) {
 // ------------------------------------------------------------ GET /api/state?log=<next line wanted>
 static void webState() {
   uint32_t now = millis();
+
+  // What this page is showing: keep those debug streams on (webStreamsTick)
+  String want = web.arg("want");
+  for (uint8_t i = 0; i < STREAM_N; i++) if (want.indexOf(STREAM_WANT[i]) >= 0) streamWantMs[i] = now | 1;
+  if (want.indexOf("sensor") >= 0 && !statusLine[ST_REACH][0]) webAskStatus(false);   // reach map needs it
+
   String o;
-  o.reserve(3000);
+  o.reserve(4000);
   o += "{\"boot\":"; o += webBootId;
   jTxt(o, "fw", SCREEN_FW_VERSION);
   jTxt(o, "nv", nanoVersion);
@@ -159,6 +232,8 @@ static void webState() {
     jTxt(o, "tireInfo", d);
     float offset = isChecked(weightPosSw) ? STICK_ON_OFFSET_MM : CLIP_ON_OFFSET_MM;
     jNum(o, "weightR", tire.rimMm / 2 + offset, 1);
+    jNum(o, "rimMm", tire.rimMm, 1);
+    jNum(o, "sideMm", tire.sideMm, 1);
   }
   jKey(o, "recents"); o += '[';
   for (uint8_t i = 0, first = 1; i < RECENT_N; i++) {
@@ -200,7 +275,25 @@ static void webState() {
     jStr(o, webLogBuf[n % WEB_LOG_LINES]);
   }
   o += ']';
+  jKey(o, "lt"); o += '[';                           // when each line was logged, ms since start
+  for (uint32_t n = from; n < to; n++) {
+    if (n > from) o += ',';
+    o += webLogT[n % WEB_LOG_LINES];
+  }
+  o += ']';
   jInt(o, "seq", to);
+  jInt(o, "now", now);
+
+  // the Nano's Status lines and which debug streams are on
+  jKey(o, "status"); o += '[';
+  for (uint8_t k = 0; k < STATUS_N; k++) {
+    if (k) o += ',';
+    jStr(o, statusLine[k]);
+  }
+  o += ']';
+  jKey(o, "streams"); o += '[';
+  for (uint8_t i = 0; i < STREAM_N; i++) { if (i) o += ','; o += streamOn[i] ? '1' : '0'; }
+  o += ']';
   o += '}';
 
   web.sendHeader("Cache-Control", "no-store");
@@ -369,9 +462,24 @@ void webSetup() {
   logEvent(b);
 }
 
+// Switch each debug stream on while a page shows it, off when none does
+static void webStreamsTick(uint32_t now) {
+  static uint32_t last = 0;
+  if (now - last < 250) return;
+  last = now;
+  if (!linkUp || quiet) return;
+  for (uint8_t i = 0; i < STREAM_N; i++) {
+    bool want = streamWantMs[i] && now - streamWantMs[i] < STREAM_HOLD_MS;
+    if (want == streamOn[i]) continue;
+    streamOn[i] = want;
+    nanoSend("%s%s", STREAM_CMD[i], want ? "On" : "Off");
+  }
+}
+
 void webTick(uint32_t now) {
   dns.processNextRequest();
   web.handleClient();
+  webStreamsTick(now);
 
   static uint32_t lastLabel = 0;
   if (now - lastLabel >= 2000) {

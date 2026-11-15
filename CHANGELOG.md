@@ -16,6 +16,15 @@
 - The touch screen's button handlers became shared `do...()` actions used by
   both the touch screen and the web page; screen changes from code all go
   through the deferred `requestScreen()`.
+- **Web page, stage 2.** Level tab live view: bubble levels, reach margin,
+  actuator drive, 20 s charts of platform angle and actuator drive with
+  Level start/finish marks, run times, CSV export; Sensors view with platform
+  and frame bubbles and a reach map. Balance tab: the wheel drawn from above
+  with the weight position, centre of gravity and (live) load cell readings.
+  The screen switches the Nano's debug streams on only while a page shows
+  them, keeps the Nano's Status lines (read at link up and after Find Reach;
+  listed on the Info tab), and timestamps every log line (Save in the console
+  now includes times).
 - Needs the **Huge APP** partition scheme (program ~1.3 MB);
   `Screen/ui/partitions.csv` sets the layout. Saved settings carry over.
 

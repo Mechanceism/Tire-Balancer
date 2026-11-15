@@ -159,6 +159,22 @@ Debug) plus:
   It clears itself after 5 minutes unused or when the WiFi link drops.
 - **Tire Info**: type the size with the phone's keyboard (format is found
   automatically); it shows what the size means as you type.
+- **Level tab, Live view** (choose *Leveling*, *Sensors* or *Off*):
+  - *Leveling*: a bubble level of the platform's distance from level (the dot
+    sits on the high side; rings at 0.1, 1 and 2 deg), frame tilt, reach margin
+    with "Level can start / Close to the limit / Too steep", both actuators'
+    drive, and two 20 s charts (platform off level, with the level tolerance
+    band; actuator drive). Level starts and finishes are marked on the charts,
+    and the time of each run is listed under the Level button. Pause, Save CSV
+    (last 2 minutes) and tap/drag on a chart to read values.
+  - *Sensors*: bubble levels for the platform (accelerometer only) and the
+    frame, and the **reach map**: how far, and which way, the frame may tilt
+    for the platform to still reach level (outer line), the line Level must
+    start inside (1.5 deg margin), and the frame's position now.
+- **Balance tab, wheel drawing**: the wheel seen from above, standing at the
+  screen, to scale once the size is entered: the three arms, where the weight
+  goes (with grams/oz) and the centre of gravity (enlarged). With **Live load
+  cells** on, the arms show their kg and the drawing follows the load live.
 - **Console**: every line sent to and received from the Nano, a box to type
   commands (see [Protocol.md](Protocol.md)), quick buttons for `Status` and
   the debug outputs, and **Save** to download the log as a text file.
@@ -168,6 +184,15 @@ The touch screen and the page always agree: a change on either shows on the
 other (and on every connected phone) within a second, and anything started
 from a phone shows the same Leveling/Balancing page on the touch screen, with
 its Cancel button working as usual.
+
+Live data comes from the Nano's own debug outputs (`LevelDebug`,
+`SensorDebug`, `ScaleDebug`). The screen switches each one on only while some
+phone is showing it and off again about 3 s after the last one stops (closing
+the page or switching tabs is enough), so the 9600-baud link never carries
+streams nobody is looking at. Typing those commands in the console still works,
+but a live view may switch them back off when it closes. The reach map uses
+the Nano's `Status`, which the screen reads when the link comes up and again
+after Find Reach.
 
 The page is in `Screen/ui/WebPage.h` (plain HTML/CSS/JavaScript, edit it
 directly); the server side is `Screen/ui/Web.ino`.
