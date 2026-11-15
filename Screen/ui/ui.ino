@@ -110,6 +110,7 @@ uint32_t rxBadLines   = 0;        // lines thrown away (bad checksum or too long
 #define QUIET_MS 10000
 bool     quiet        = false;
 uint32_t quietUntil   = 0;
+#define NOISE_BYTES 4             // non-text bytes within 0.5 s that count as noise
 
 // Sliders that are dragged: send the newest value at most every 100 ms
 bool pitchTrimPending = false, rollTrimPending = false, laserAnglePending = false;
@@ -337,10 +338,22 @@ void showMessage(const char *title, const char *text) {
   lv_obj_add_event_cb(messageBox, messageBoxDeleted, LV_EVENT_DELETE, NULL);
 }
 
+// Going back to the menu is only requested here and done in loop() once no
+// screen animation is running: starting a screen fade while another one is
+// still running crashed the ESP32 (an Err arriving during the 0.25 s fade to
+// the leveling page restarted the screen).
+static bool backToMenuPending = false;
+
 static void backToOptionMenu() {
-  if (lv_scr_act() != ui_OptionMenu) {
-    lv_scr_load_anim(ui_OptionMenu, LV_SCR_LOAD_ANIM_FADE_ON, 250, 0, false);
-  }
+  backToMenuPending = true;
+}
+
+static void screenTick() {
+  if (!backToMenuPending) return;
+  lv_disp_t *d = lv_disp_get_default();
+  if (d->scr_to_load) return;                       // a screen change is still animating
+  backToMenuPending = false;
+  if (lv_scr_act() != ui_OptionMenu) lv_scr_load_anim(ui_OptionMenu, LV_SCR_LOAD_ANIM_FADE_ON, 250, 0, false);
 }
 
 static void startWaiting(Waiting what, uint32_t timeoutMs) {
@@ -554,6 +567,16 @@ static void handleNanoLine(char *line) {
   }
 
   // Everything else is an event, and the Nano repeats events until it gets an Ack.
+  // Ack every copy, but act on it only once.
+  static char     lastEvent[48] = "";
+  static uint32_t lastEventMs   = 0;
+  if (!strcmp(line, lastEvent) && millis() - lastEventMs < 3000) {
+    nanoSend("Ack");
+    return;
+  }
+  strncpy(lastEvent, line, sizeof(lastEvent) - 1);
+  lastEventMs = millis();
+
   if (!strncmp(line, "LevelCompleted", 14)) {
     nanoSend("Ack");
     if (waiting == WAIT_LEVEL) {
@@ -601,12 +624,19 @@ static void nanoReceiveTick() {
     rxBytes++;
     uint8_t b = (uint8_t)c;
     if (b > 0x7E || (b < 0x20 && c != '\n' && c != '\r' && c != '\t')) {
-      if (!quiet) {
-        quiet = true;
-        Serial.printf("! non-text byte 0x%02X on RX - pausing sends\n", b);
-        showLinkState();
+      // One stray byte (e.g. while either board restarts) is not "noise";
+      // pause sending only for several within half a second (Nano upload).
+      static uint32_t noiseFirst = 0;
+      static uint8_t  noiseCount = 0;
+      if (millis() - noiseFirst > 500) { noiseFirst = millis(); noiseCount = 0; }
+      if (++noiseCount >= NOISE_BYTES) {
+        if (!quiet) {
+          quiet = true;
+          Serial.printf("! non-text bytes on RX - pausing sends\n");
+          showLinkState();
+        }
+        quietUntil = millis() + QUIET_MS;
       }
-      quietUntil = millis() + QUIET_MS;
       rxOverflow = true;                             // drop this line
       continue;
     }
@@ -1029,6 +1059,7 @@ void setup() {
 void loop()
 {
   lv_timer_handler(); /* let the GUI do its work */
+  screenTick();       // screen changes requested by Nano events, once no animation runs
 
   // Receive first, THEN read the clock, so lastHeardMs can never be later
   // than "now" (that made "now - lastHeardMs" wrap and drop the link).
