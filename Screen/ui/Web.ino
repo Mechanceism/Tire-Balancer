@@ -71,6 +71,13 @@ void webNanoLine(const char *line) {
   if (v) strncpy(nanoVersion, v, sizeof(nanoVersion) - 1);
 }
 
+// The link has just come up. The Nano only says its version when it starts
+// ("Ready V...") or in Status; if the screen started after the Nano it has
+// heard neither, so ask once.
+void webLinkUp() {
+  if (!nanoVersion[0]) nanoSend("Status");
+}
+
 // ------------------------------------------------------------ JSON helpers
 static void jStr(String &o, const char *s) {
   o += '"';
@@ -347,12 +354,15 @@ void webSetup() {
   web.onNotFound(webNotFound);
   web.begin();
 
-  // Debug tab, under Restore Factory Defaults
+  // Debug tab, just under Restore Factory Defaults. Placed from the button's
+  // final position: setupExtraWidgets() moves the tab's widgets down after
+  // creating them, so a fixed position would land on the buttons.
   wifiLabel = lv_label_create(ui_Debug_Tab);
-  lv_obj_set_align(wifiLabel, LV_ALIGN_CENTER);
-  lv_obj_set_y(wifiLabel, lv_pct(258));
+  lv_obj_set_width(wifiLabel, lv_pct(100));          // full width, so a longer text stays centred
   lv_obj_set_style_text_align(wifiLabel, LV_TEXT_ALIGN_CENTER, 0);
   wifiLabelUpdate();
+  lv_obj_update_layout(ui_Debug_Tab);
+  lv_obj_align_to(wifiLabel, restoreBtn, LV_ALIGN_OUT_BOTTOM_MID, 0, 12);
 
   char b[64];
   snprintf(b, sizeof(b), "WiFi \"%s\" up, page at %s", WIFI_SSID, WiFi.softAPIP().toString().c_str());

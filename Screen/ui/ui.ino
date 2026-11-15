@@ -142,6 +142,7 @@ uint32_t lastSliderSendMs = 0;
 
 lv_obj_t *statusLabel   = NULL;   // bottom-left corner, on every screen
 lv_obj_t *messageBox    = NULL;
+lv_obj_t *restoreBtn   = NULL;   // Debug tab: Restore Factory Defaults (the WiFi info goes under it)
 lv_obj_t *weightPosSw  = NULL;   // Tire Info: Clip-on (off) / Stick-on (on)
 lv_obj_t *tireFmtDd    = NULL;   // Tire Info: size format
 lv_obj_t *tireSizeLbl  = NULL;   // Tire Info: the size entered (tap to edit)
@@ -670,6 +671,7 @@ static void handleNanoLine(char *line) {
     logEvent("link up");
     showLinkState();
     syncNano();
+    webLinkUp();                                     // asks for the Nano's version if not known
   }
 
   if (line[0] == '#') return;                        // debug text for humans
@@ -1291,7 +1293,7 @@ static void setupExtraWidgets() {
   lv_obj_center(reachLbl);
 
   // Debug tab: Restore Factory Defaults, at the very bottom
-  lv_obj_t *restoreBtn = lv_btn_create(ui_Debug_Tab);
+  restoreBtn = lv_btn_create(ui_Debug_Tab);
   lv_obj_set_size(restoreBtn, 220, 45);
   lv_obj_set_align(restoreBtn, LV_ALIGN_CENTER);
   lv_obj_set_y(restoreBtn, lv_pct(230));
