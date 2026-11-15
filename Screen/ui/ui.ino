@@ -1234,8 +1234,30 @@ static void setupExtraWidgets() {
   // Everything else on the tab moves down to make room.
   {
     lv_obj_update_layout(ui_Debug_Tab);
+    lv_coord_t W = lv_obj_get_content_width(ui_Debug_Tab);
     lv_coord_t H = lv_obj_get_content_height(ui_Debug_Tab);
-    const lv_coord_t SHIFT = 60;
+    auto px = [](lv_coord_t v, lv_coord_t full) -> lv_coord_t {    // resolve lv_pct() to pixels
+      return LV_COORD_IS_PCT(v) ? (lv_coord_t)((int32_t)LV_COORD_GET_PCT(v) * full / 100) : v;
+    };
+    auto X = [&](lv_obj_t *o) { return px(lv_obj_get_style_x(o, LV_PART_MAIN), W); };
+    auto Y = [&](lv_obj_t *o) { return px(lv_obj_get_style_y(o, LV_PART_MAIN), H); };
+
+    // The laser angle row is a copy of the Pitch Trim row, one row higher:
+    // the same distance as Pitch Trim is above Roll Trim.
+    lv_coord_t row = Y(ui_RollOffsetSlider) - Y(ui_PitchOffsetSlider);
+    lv_coord_t top = -H / 2;                         // CENTER-aligned offsets from the tab middle
+    const lv_coord_t SWITCH_ABOVE = 36;             // switch row centre above the laser title
+    // Move everything else down just enough for the switch row to fit at the top.
+    lv_coord_t shift = (top + 2 + 20 + SWITCH_ABOVE) - (Y(ui_PitchOffsetSliderLabel) - row);
+    if (shift < 0) shift = 0;
+
+    // Remember the Pitch row (before it moves) to copy from
+    lv_coord_t pLabX = X(ui_PitchOffsetSliderLabel), pLabY = Y(ui_PitchOffsetSliderLabel);
+    lv_coord_t pSldX = X(ui_PitchOffsetSlider),      pSldY = Y(ui_PitchOffsetSlider);
+    lv_coord_t pValX = X(ui_PitchOffsetValueLabel),  pValY = Y(ui_PitchOffsetValueLabel);
+    lv_coord_t pMinX = X(ui_PitchOffsetMinButton),   pMinY = Y(ui_PitchOffsetMinButton);
+    lv_coord_t pPlsX = X(ui_PitchOffsetPlusButton),  pPlsY = Y(ui_PitchOffsetPlusButton);
+
     lv_obj_t *laserObjs[] = {ui_ManualLaserSwitch, ui_ManualLaserAngleSlider,
                              ui_ManualLaserAngleLabel, ui_ManualLaserAngleValueLabel};
     uint32_t n = lv_obj_get_child_cnt(ui_Debug_Tab);
@@ -1243,42 +1265,41 @@ static void setupExtraWidgets() {
       lv_obj_t *c = lv_obj_get_child(ui_Debug_Tab, i);
       bool isLaser = false;
       for (lv_obj_t *o : laserObjs) if (o == c) isLaser = true;
-      if (isLaser) continue;
-      lv_coord_t y = lv_obj_get_style_y(c, LV_PART_MAIN);
-      if (LV_COORD_IS_PCT(y)) y = (lv_coord_t)((int32_t)LV_COORD_GET_PCT(y) * H / 100);
-      lv_obj_set_y(c, y + SHIFT);
+      if (!isLaser) lv_obj_set_y(c, Y(c) + shift);
     }
-    lv_coord_t top = -H / 2;                         // CENTER-aligned offsets from the tab middle
-
-    lv_obj_set_align(ui_ManualLaserSwitch, LV_ALIGN_CENTER);
-    lv_obj_set_pos(ui_ManualLaserSwitch, -60, top + 24);
-    lv_obj_t *set90 = lv_btn_create(ui_Debug_Tab);
-    lv_obj_set_size(set90, 90, 40);
-    lv_obj_set_align(set90, LV_ALIGN_CENTER);
-    lv_obj_set_pos(set90, 60, top + 24);
-    lv_obj_add_event_cb(set90, laserSet90_event_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *s90l = lv_label_create(set90);
-    lv_label_set_text(s90l, "Set 90");
-    lv_obj_center(s90l);
+    lv_coord_t dy = shift - row;                     // pitch row position -> laser row position
 
     lv_obj_set_align(ui_ManualLaserAngleLabel, LV_ALIGN_CENTER);
-    lv_obj_set_pos(ui_ManualLaserAngleLabel, 0, top + 58);
-
+    lv_obj_set_pos(ui_ManualLaserAngleLabel, pLabX, pLabY + dy);
     lv_obj_set_align(ui_ManualLaserAngleSlider, LV_ALIGN_CENTER);
-    lv_obj_set_width(ui_ManualLaserAngleSlider, 150);
-    lv_obj_set_pos(ui_ManualLaserAngleSlider, -15, top + 90);
+    lv_obj_set_size(ui_ManualLaserAngleSlider, lv_obj_get_width(ui_PitchOffsetSlider), lv_obj_get_height(ui_PitchOffsetSlider));
+    lv_obj_set_pos(ui_ManualLaserAngleSlider, pSldX, pSldY + dy);
     lv_obj_set_align(ui_ManualLaserAngleValueLabel, LV_ALIGN_CENTER);
-    lv_obj_set_pos(ui_ManualLaserAngleValueLabel, 81, top + 90);
+    lv_obj_set_pos(ui_ManualLaserAngleValueLabel, pValX, pValY + dy);
     for (int k = 0; k < 2; k++) {
+      lv_obj_t *src = k ? ui_PitchOffsetPlusButton : ui_PitchOffsetMinButton;
       lv_obj_t *b = lv_btn_create(ui_Debug_Tab);
-      lv_obj_set_size(b, 40, 40);
+      lv_obj_set_size(b, lv_obj_get_width(src), lv_obj_get_height(src));
       lv_obj_set_align(b, LV_ALIGN_CENTER);
-      lv_obj_set_pos(b, k ? 120 : -135, top + 90);
+      lv_obj_set_pos(b, k ? pPlsX : pMinX, (k ? pPlsY : pMinY) + dy);
       lv_obj_add_event_cb(b, laserStep_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)(k ? 1 : -1));
       lv_obj_t *bl = lv_label_create(b);
       lv_label_set_text(bl, k ? "+" : "-");
       lv_obj_center(bl);
     }
+
+    // Switch row above the laser title: [Manual Laser] [Set 90]
+    lv_coord_t swY = pLabY + dy - SWITCH_ABOVE;
+    lv_obj_set_align(ui_ManualLaserSwitch, LV_ALIGN_CENTER);
+    lv_obj_set_pos(ui_ManualLaserSwitch, -60, swY);
+    lv_obj_t *set90 = lv_btn_create(ui_Debug_Tab);
+    lv_obj_set_size(set90, 90, 40);
+    lv_obj_set_align(set90, LV_ALIGN_CENTER);
+    lv_obj_set_pos(set90, 60, swY);
+    lv_obj_add_event_cb(set90, laserSet90_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *s90l = lv_label_create(set90);
+    lv_label_set_text(s90l, "Set 90");
+    lv_obj_center(s90l);
   }
 
   // Tire Info tab: Recents, below the size controls (the tab scrolls)
