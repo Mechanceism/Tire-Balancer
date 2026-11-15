@@ -9,22 +9,51 @@ with everything connected" in [Wiring.md](Wiring.md).
 The Nano's flash is 98% full (about 390 bytes free) - see GOALS.md before
 adding to it.
 
+Each board's libraries are in the repo, at the exact versions tested, so
+nothing has to be installed from the Library Manager:
+
+| Board | Sketchbook location | Libraries bundled |
+|---|---|---|
+| Nano | `Nano` | `Nano/libraries`: MPU6050 (Electronic Cats) 1.4.3, HX711 (Rob Tillaart) 0.6.0 |
+| Screen | `Screen` | `Screen/libraries`: LVGL 8.3.11 (with `lv_conf.h`), TFT_eSPI 2.5.43 (set up for this board), `ui` (the screens) |
+
+The Arduino IDE only looks for libraries in the `libraries` folder of its
+**Sketchbook location**, so point that at the board's folder before opening
+its sketch:
+
+1. Arduino IDE > File > Preferences > **Sketchbook location** > Browse, pick
+   the board's folder from the table (the folder that contains `libraries`),
+   OK.
+2. **Restart the Arduino IDE** (it reads the libraries at start-up).
+3. Open the sketch, set the board (below) and Upload.
+
+Switching between the Nano and the screen means changing the Sketchbook
+location and restarting again. Write down your old location first and set it
+back afterwards if you use the IDE for other projects. Do not install or update
+these libraries with the Library Manager while the location points into the
+repo: it would write into the repo's copy.
+
+The board packages (Boards Manager) are not in the repo. Tested with
+**Arduino AVR Boards 1.8.6** and **esp32 by Espressif Systems 3.3.0**.
+
 ### Nano
 
-1. Install two libraries with the Library Manager: **MPU6050** by Electronic
-   Cats and **HX711** by Rob Tillaart.
+1. Sketchbook location = the repo's `Nano` folder, restart the IDE.
 2. Open `Nano/TireBalancer_Nano/TireBalancer_Nano.ino` (the other tabs open with it).
 3. Board: *Arduino Nano*. Processor: *ATmega328P (Old Bootloader)* if a plain
-   *ATmega328P* upload fails.
-4. Upload.
+   *ATmega328P* upload fails (it does on this machine's Nano).
+4. Upload. With the screen wired up, see "Uploading with everything connected"
+   in [Wiring.md](Wiring.md).
+
+`Tools/MPU6050_Calibrate` and `Tools/I2C_Scanner` (Nano) build with the same
+setting.
 
 ### Screen
 
-The CYD is picky, so the exact libraries it needs are bundled in `Screen/libraries`.
+The CYD is picky about library versions and settings, which is why its
+libraries are bundled.
 
-1. Arduino IDE > File > Preferences > **Sketchbook location** = the `Screen`
-   folder of this repo (the folder that contains `ui` and `libraries`).
-   Set it back afterwards if you use the IDE for other projects.
+1. Sketchbook location = the repo's `Screen` folder, restart the IDE.
 2. Open `Screen/ui/ui.ino`.
 3. Boards Manager: install **esp32** by Espressif Systems.
 4. Board: *ESP32 Dev Module*. Tools > Flash Mode: *DIO*.
@@ -40,7 +69,8 @@ Restore Factory Defaults, and the status line.
 ### Command line (optional)
 
 `powershell -ExecutionPolicy Bypass -File Tools\build.ps1` compiles both
-sketches with `arduino-cli` without uploading.
+sketches with `arduino-cli` without uploading. It uses only the repo's
+libraries (the same redirect as above), so it also proves nothing is missing.
 
 ## After rebuilding or changing the hardware
 

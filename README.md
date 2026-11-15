@@ -25,6 +25,7 @@ An Arduino Nano does the leveling, weighing and laser. An ESP32 touch screen (CY
 | Folder | What is in it |
 |---|---|
 | [Nano/TireBalancer_Nano](Nano/TireBalancer_Nano) | Arduino Nano firmware |
+| [Nano/libraries](Nano/libraries) | Libraries bundled for the Nano (MPU6050, HX711) |
 | [Screen/ui](Screen/ui) | Touch screen sketch |
 | [Screen/libraries](Screen/libraries) | Libraries bundled for the screen (LVGL 8.3.11, TFT_eSPI 2.5.43 with this board's setup, generated UI) |
 | [Screen/squareline](Screen/squareline) | SquareLine Studio project for the screens |

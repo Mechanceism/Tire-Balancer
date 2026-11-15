@@ -1,5 +1,12 @@
 # Change Log
 
+## Unreleased
+
+- **Nano libraries bundled** in `Nano/libraries` (MPU6050 1.4.3, HX711 0.6.0),
+  like the screen's. Set the IDE's Sketchbook location to `Nano` to build
+  without installing anything; see docs/Setup.md.
+- `Tools/build.ps1` now builds each board with only the repo's libraries.
+
 ## Nano V0.7.0 + Screen V0.4.0 (2026-11-14) - boards linked, tire tested
 
 The boards now talk directly through the level converter, and the machine was
