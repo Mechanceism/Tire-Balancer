@@ -218,6 +218,7 @@ static void webState() {
 
   // last balance result (metric)
   jInt(o, "have", haveResult);
+  jInt(o, "laserOffIn", laserAutoOffAt ? (long)((int32_t)(laserAutoOffAt - now) / 1000 + 1) : 0);
   jNum(o, "angle", resAngleDeg, 2);
   jNum(o, "massG", resMassG, 2);
   jNum(o, "totalKg", resTotalKg, 3);
@@ -360,7 +361,7 @@ static void webDo() {
   else if (a == "tare")          { doTare(); }
   else if (a == "balance")       { doBalance(); requestScreen(ui_BalanceLoadingMenu); }
   else if (a == "balanceCancel") { doBalanceCancel(); backToOptionMenu(); }
-  else if (a == "laser")         { nanoSend("LaserToggle"); }
+  else if (a == "laser")         { doLaserToggle(); }
   else if (a == "autoStop")      { tapSwitch(ui_AutoStopCheckbox, on); }
 
   // ---- Tire Info tab

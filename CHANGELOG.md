@@ -32,6 +32,10 @@
 - **Level Gain Kp slider removed** from the touch screen and the web page (the
   rows below move up). The screen no longer sends or stores `Kp`; the Nano's
   saved, tuned gains are used. `Kp` still works as a command.
+- Enter Speed button 2/3 as tall, centred on the two remaining speed rows.
+- **Laser auto-off**: the screen switches the laser off 30 s after a Balance,
+  unless the Laser button (or Manual Laser) is used first. The web page shows
+  the countdown on the Balance tab.
 - Needs the **Huge APP** partition scheme (program ~1.3 MB);
   `Screen/ui/partitions.csv` sets the layout. Saved settings carry over.
 

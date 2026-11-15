@@ -207,7 +207,8 @@ svg text{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
       <button class="btn primary" data-a="balance" data-g>Balance</button>
       <button class="btn" data-a="laser" data-g>Laser</button>
     </div>
-    <p class="muted" style="margin:10px 0 0">Tare with the arms empty, once per power-up.</p>
+    <p class="muted" style="margin:10px 0 0">Tare with the arms empty, once per power-up. After a Balance the laser switches itself off after 30 s; press Laser to take over.</p>
+    <p class="small" id="laserNote" style="margin:6px 0 0"></p>
   </div>
   <div class="card">
     <h2>Result</h2>
@@ -868,6 +869,7 @@ function render(j){
     $('#rTotal').textContent=j.lbs?fmt(j.totalKg*2.20462,2):fmt(j.totalKg,2);
   }else['#rMass','#rAngle','#rTotal'].forEach(s=>$(s).textContent='--');
   $('#rMassU').textContent=j.grams?'g':'oz';$('#rTotalU').textContent=j.lbs?'lbs':'kg';
+  $('#laserNote').textContent=j.laserOffIn>0?'Laser switches off in '+j.laserOffIn+' s.':'';
 
   // tire
   if(!held('box')&&document.activeElement!==$('#size')&&$('#size').value!==j.box){$('#size').value=j.box}

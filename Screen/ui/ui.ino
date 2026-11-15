@@ -53,6 +53,7 @@
 #define REACH_TIMEOUT_MS   200000   // FindReach: 4 end-stop legs (up to 40 s each) + leveling
 #define BALANCE_TIMEOUT_MS 8000
 #define TARE_TIMEOUT_MS    5000
+#define LASER_AUTO_OFF_MS  30000    // the laser goes off this long after a Balance, unless the Laser button is pressed
 
 // ------------------------------------------------------------ balance weight position
 // The tire code gives the rim's bead seat diameter. The weight does not sit
@@ -121,6 +122,7 @@ enum Waiting { WAIT_NONE, WAIT_LEVEL, WAIT_BALANCE, WAIT_TARE };
 Waiting  waiting      = WAIT_NONE;
 bool     reachRunning = false;    // the leveling page is showing a FindReach run
 uint32_t waitDeadline = 0;        // 0 = wait forever (leveling with Auto Stop off)
+uint32_t laserAutoOffAt = 0;      // when to switch the laser off after a Balance (0 = not planned)
 
 bool     linkUp       = false;
 uint32_t lastHeardMs  = 0;
@@ -712,6 +714,7 @@ static void handleNanoLine(char *line) {
     resMassG    = mass;
     resTotalKg  = total;
     haveResult  = true;
+    laserAutoOffAt = millis() + LASER_AUTO_OFF_MS;  // Balance switched the laser on
     refreshResults();
     if (waiting == WAIT_BALANCE) {
       waiting = WAIT_NONE;
@@ -801,6 +804,12 @@ static void linkTick(uint32_t now) {
     showMessage("No reply", "The Nano did not answer in time. Check the serial wires (see docs/Wiring.md).");
   }
 
+  if (laserAutoOffAt && (int32_t)(now - laserAutoOffAt) >= 0) {
+    laserAutoOffAt = 0;
+    nanoSend("LaserOff");
+    statusNote("Laser off (30 s)");
+  }
+
   if (now - lastSliderSendMs >= 100) {
     if (pitchTrimPending) {
       pitchTrimPending = false; lastSliderSendMs = now;
@@ -854,6 +863,12 @@ void doBalance() {
 void doBalanceCancel() {
   waiting = WAIT_NONE;
   nanoSendNow("BalanceCancel");
+}
+// The Laser button. Pressing it means the user wants the laser as it now is,
+// so the automatic switch-off after a Balance is cancelled.
+void doLaserToggle() {
+  laserAutoOffAt = 0;
+  nanoSend("LaserToggle");
 }
 // Stops everything on the Nano (web page Stop button)
 void doStop() {
@@ -949,7 +964,7 @@ void BalanceCancelButton_event_handler(lv_event_t * e) {
 }
 void LaserButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  nanoSend("LaserToggle");
+  doLaserToggle();
 }
 void TireInfoEnterButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
@@ -1081,6 +1096,7 @@ void MassCompSwitch_event_cb(lv_event_t * e) {
   prefsDirty();
 }
 void ManualLaserSwitch_event_cb(lv_event_t * e) {
+  laserAutoOffAt = 0;                     // the user is pointing the laser: leave it alone
   if (isChecked(ui_ManualLaserSwitch)) {
     nanoSend("LaserAngle%d", (int)lv_slider_get_value(ui_ManualLaserAngleSlider));
     nanoSend("ManualLaserOn");
@@ -1267,6 +1283,10 @@ static void setupExtraWidgets() {
   // spacing between the Kp row and Units.
   lv_obj_t *kpRow[] = {ui_SpeedCurveSlider, ui_SpeedCurveSliderLabel, ui_SpeedCurveValueLabel};
   for (lv_obj_t *o : kpRow) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+  // Enter Speed spanned the three slider rows (120 px, centred at 97%); now
+  // there are two: 2/3 the height, centred on Min/Max the same way (84%).
+  lv_obj_set_height(ui_SpeedEnterButton, 80);
+  lv_obj_set_y(ui_SpeedEnterButton, lv_pct(84));
   // Slider start values match the Nano's tuned defaults (Settings.ino), so
   // pressing "Enter Speed" without moving them changes nothing.
   lv_slider_set_value(ui_MinSpeedSlider, 20, LV_ANIM_OFF);

@@ -140,7 +140,9 @@ newest first. Tap one to fill in the format and size, then press **Enter**.
    so it works with or without a tire and without a Tare.
 4. **Tire Info**: choose the format, tap the size box and type the size as
    printed (or tap a Recent), choose Clip-on or Stick-on, press **Enter**.
-5. **Balance**. Read the weight and angle; the laser points at the spot.
+5. **Balance**. Read the weight and angle; the laser points at the spot. It
+   switches itself off after 30 s. Pressing **Laser** (touch screen or web)
+   cancels that: the laser then stays on or off as you leave it.
 
 ## Web page (phone or laptop)
 
