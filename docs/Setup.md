@@ -69,6 +69,24 @@ it only means that load cell is wired the other way round.
 Check with `ScaleDebugOn`: the mass on one arm should read its true weight on
 that load cell and about zero on the other two.
 
+## Settings kept by the screen
+
+The screen keeps these in its own flash and sends them to the Nano after every
+handshake (power-on, Nano restart), so they survive a power cycle: Pitch/Roll
+Trim, Min/Max Speed and Level Gain Kp (as last sent with **Enter Speed**), Mass
+Comp, Auto Stop, the units switches and Clip-on/Stick-on. Changes are saved
+about 1.5 s after the last touch. Not kept on purpose: Manual Laser (so the
+laser never switches itself on at boot) and Test Weight (a bench-test fake
+load that would skew every result).
+
+**Restore Factory Defaults** (bottom of the Debug tab) puts those back to the
+tuned values - trims 0, Min 20, Max 150, Kp 300, Mass Comp on, Auto Stop on,
+oz / kg, Clip-on - and sends them to the Nano. Calibration, the reach area, the
+factory zero and the Recents list are not touched.
+
+**Recents** (Tire Info tab, scroll down): the last 5 different sizes entered,
+newest first. Tap one to fill in the format and size, then press **Enter**.
+
 ## Normal use
 
 1. Arms empty → **Tare** (once per power-up).

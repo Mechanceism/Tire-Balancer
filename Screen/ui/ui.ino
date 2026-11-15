@@ -19,6 +19,7 @@
 #include <ui.h>
 #include <Wire.h>
 #include <stdarg.h>
+#include <Preferences.h>         // settings kept in the ESP32's flash (NVS)
 
 #define SCREEN_FW_VERSION "0.3.0"
 
@@ -59,6 +60,17 @@
 // Defined up here because the Arduino IDE puts its generated function
 // prototypes above the first function, and they use this type.
 struct TireSize { float widthMm, sideMm, rimMm; };
+
+// Debug/user settings the screen keeps in its own flash and sends to the Nano
+// after every handshake. PREF_DEFAULTS are the "factory defaults" (the values
+// tuned on the machine, 2026-11-14). Manual Laser and Test Weight are not kept.
+struct ScreenPrefs {
+  int16_t pitchTrim, rollTrim;           // tenths of a degree
+  int16_t minSpeed, maxSpeed, kp;        // as last sent with Enter Speed
+  bool    massComp, autoStop;
+  bool    grams, lbs;                    // units: added weight in g, total weight in lbs
+  bool    stickOn;                       // Tire Info: Stick-on (else Clip-on)
+};
 
 // A tire size format for the number pad: a list of parts; the separator after
 // each part is filled in automatically. autoLen: jump to the next part after
@@ -475,11 +487,83 @@ static void sendSwitches() {
   nanoSend(isChecked(ui_TestWeightSwitch) ? "TestMassOn" : "TestMassOff");
 }
 
-// Everything the Nano forgets when it restarts. Sent whenever the link comes up.
-// Speeds and Kp are NOT sent here: the Nano keeps its own saved values until
-// "Enter Speed" is pressed.
+// ---- settings kept in the ESP32's flash
+static const ScreenPrefs PREF_DEFAULTS = {0, 0, 20, 150, 300, true, true, false, false, false};
+static Preferences prefs;
+static int16_t  enteredMin = 20, enteredMax = 150, enteredKp = 300;   // last Enter Speed
+static uint32_t prefsDirtyAt = 0;
+
+static void setChecked(lv_obj_t *o, bool on) {
+  if (on) lv_obj_add_state(o, LV_STATE_CHECKED); else lv_obj_clear_state(o, LV_STATE_CHECKED);
+}
+static void setSlider(lv_obj_t *s, lv_obj_t *valueLabel, int v) {
+  lv_slider_set_value(s, v, LV_ANIM_OFF);
+  lv_label_set_text_fmt(valueLabel, "%d", v);
+}
+
+static void prefsLoad(ScreenPrefs &p) {
+  const ScreenPrefs &d = PREF_DEFAULTS;
+  prefs.begin("tb", true);
+  p.pitchTrim = prefs.getShort("pt", d.pitchTrim);
+  p.rollTrim  = prefs.getShort("rt", d.rollTrim);
+  p.minSpeed  = prefs.getShort("min", d.minSpeed);
+  p.maxSpeed  = prefs.getShort("max", d.maxSpeed);
+  p.kp        = prefs.getShort("kp", d.kp);
+  p.massComp  = prefs.getBool("mc", d.massComp);
+  p.autoStop  = prefs.getBool("as", d.autoStop);
+  p.grams     = prefs.getBool("g", d.grams);
+  p.lbs       = prefs.getBool("lb", d.lbs);
+  p.stickOn   = prefs.getBool("so", d.stickOn);
+  prefs.end();
+}
+
+// Put saved values on the widgets (does not send anything to the Nano).
+static void prefsApply(const ScreenPrefs &p) {
+  setSlider(ui_PitchOffsetSlider, ui_PitchOffsetValueLabel, p.pitchTrim);
+  setSlider(ui_RollOffsetSlider, ui_RollOffsetValueLabel, p.rollTrim);
+  setSlider(ui_MinSpeedSlider, ui_MinSpeedValueLabel, p.minSpeed);
+  setSlider(ui_MaxSpeedSlider, ui_MaxSpeedValueLabel, p.maxSpeed);
+  setSlider(ui_SpeedCurveSlider, ui_SpeedCurveValueLabel, p.kp);
+  enteredMin = p.minSpeed;
+  enteredMax = p.maxSpeed;
+  enteredKp  = p.kp;
+  setChecked(ui_MassCompSwitch, p.massComp);
+  setChecked(ui_AutoStopCheckbox, p.autoStop);
+  setChecked(ui_TestWeightSwitch1, p.grams);
+  setChecked(ui_TestWeightSwitch2, p.lbs);
+  setChecked(weightPosSw, p.stickOn);
+  refreshResults();                                  // units labels
+}
+
+// Write the current widget state (speeds: as last entered). Called ~1.5 s
+// after the last change, so dragging a slider does not wear the flash.
+static void prefsWriteNow() {
+  prefs.begin("tb", false);
+  prefs.putShort("pt", lv_slider_get_value(ui_PitchOffsetSlider));
+  prefs.putShort("rt", lv_slider_get_value(ui_RollOffsetSlider));
+  prefs.putShort("min", enteredMin);
+  prefs.putShort("max", enteredMax);
+  prefs.putShort("kp", enteredKp);
+  prefs.putBool("mc", isChecked(ui_MassCompSwitch));
+  prefs.putBool("as", isChecked(ui_AutoStopCheckbox));
+  prefs.putBool("g", isChecked(ui_TestWeightSwitch1));
+  prefs.putBool("lb", isChecked(ui_TestWeightSwitch2));
+  prefs.putBool("so", isChecked(weightPosSw));
+  prefs.end();
+  Serial.println("! settings saved");
+}
+static void prefsDirty() { prefsDirtyAt = millis() | 1; }
+static void prefsTick(uint32_t now) {
+  if (prefsDirtyAt && now - prefsDirtyAt > 1500) { prefsDirtyAt = 0; prefsWriteNow(); }
+}
+
+// Everything the Nano should use from the screen. Sent whenever the link comes
+// up (after every handshake), so saved settings apply after a power cycle.
 static void syncNano() {
   sendSwitches();
+  nanoSend("MinSpeed%d", enteredMin);
+  nanoSend("MaxSpeed%d", enteredMax);
+  nanoSend("Kp%d", enteredKp);
   nanoSend("PitchTrim%.1f", lv_slider_get_value(ui_PitchOffsetSlider) / 10.0f);
   nanoSend("RollTrim%.1f", lv_slider_get_value(ui_RollOffsetSlider) / 10.0f);
   nanoSend("LaserAngle%d", (int)lv_slider_get_value(ui_ManualLaserAngleSlider));
@@ -777,6 +861,7 @@ void TireInfoEnterButton_event_handler(lv_event_t * e) {
   tire = t;
   tireEntered = true;
   sendTireInfo();
+  recentsAdd(lv_dropdown_get_selected(tireFmtDd), tireText);
   statusNote("Tire info sent");
 }
 
@@ -882,19 +967,23 @@ static void tireFmt_event_cb(lv_event_t * e) {
 }
 void SpeedEnterButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  nanoSend("MinSpeed%d", (int)lv_slider_get_value(ui_MinSpeedSlider));
-  nanoSend("MaxSpeed%d", (int)lv_slider_get_value(ui_MaxSpeedSlider));
-  nanoSend("Kp%d", (int)lv_slider_get_value(ui_SpeedCurveSlider));     // re-labelled "Level Gain Kp"
-  nanoSend("Save");                                                     // keep them after a restart
+  enteredMin = lv_slider_get_value(ui_MinSpeedSlider);
+  enteredMax = lv_slider_get_value(ui_MaxSpeedSlider);
+  enteredKp  = lv_slider_get_value(ui_SpeedCurveSlider);               // re-labelled "Level Gain Kp"
+  nanoSend("MinSpeed%d", enteredMin);
+  nanoSend("MaxSpeed%d", enteredMax);
+  nanoSend("Kp%d", enteredKp);
+  nanoSend("Save");                       // also kept by the Nano, for use without the screen
+  prefsDirty();
   statusNote("Speeds saved");
 }
 
 // Sliders that send while they move (throttled in linkTick)
 void PitchOffsetSlider_event_handler(lv_event_t * e) {
-  if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) pitchTrimPending = true;
+  if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) { pitchTrimPending = true; prefsDirty(); }
 }
 void RollOffsetSlider_event_handler(lv_event_t * e) {
-  if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) rollTrimPending = true;
+  if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) { rollTrimPending = true; prefsDirty(); }
 }
 void ManualLaserAngleSlider_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED && isChecked(ui_ManualLaserSwitch)) laserAnglePending = true;
@@ -906,6 +995,7 @@ void TestWeightSwitch_event_cb(lv_event_t * e) {
 }
 void MassCompSwitch_event_cb(lv_event_t * e) {
   nanoSend(isChecked(ui_MassCompSwitch) ? "MassCompOn" : "MassCompOff");
+  prefsDirty();
 }
 void ManualLaserSwitch_event_cb(lv_event_t * e) {
   if (isChecked(ui_ManualLaserSwitch)) {
@@ -917,12 +1007,85 @@ void ManualLaserSwitch_event_cb(lv_event_t * e) {
 }
 void AutoStopCheckbox_event_handler(lv_event_t * e) {
   nanoSend(isChecked(ui_AutoStopCheckbox) ? "AutoStopOn" : "AutoStopOff");
+  prefsDirty();
 }
 void UnitsSwitch_event_cb(lv_event_t * e) {
   refreshResults();
+  prefsDirty();
 }
 void WeightPos_event_cb(lv_event_t * e) {
   if (tireEntered) sendTireInfo();
+  prefsDirty();
+}
+
+// ---- Debug tab: Restore Factory Defaults (debug settings only)
+static void restoreConfirm_event_cb(lv_event_t * e) {
+  lv_obj_t *mb = lv_event_get_current_target(e);
+  const char *t = lv_msgbox_get_active_btn_text(mb);
+  bool go = t && !strcmp(t, "Restore");
+  lv_msgbox_close_async(mb);
+  if (!go) return;
+  prefsApply(PREF_DEFAULTS);
+  prefsWriteNow();
+  syncNano();                             // the Nano uses them at once...
+  nanoSend("Save");                       // ...and keeps the speeds/gain too
+  statusNote("Defaults restored");
+}
+static void restoreButton_event_cb(lv_event_t * e) {
+  static const char *btns[] = {"Restore", "Cancel", ""};
+  lv_obj_t *mb = lv_msgbox_create(NULL, "Restore factory defaults",
+                                  "Put the Debug settings, units and Clip/Stick-on back to the\n"
+                                  "factory values? (Calibration and Recents are kept.)", btns, false);
+  lv_obj_center(mb);
+  lv_obj_add_event_cb(mb, restoreConfirm_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+}
+
+// ---- Tire Info: Recents - the last 5 different sizes entered, newest first
+#define RECENT_N 5
+static char      recents[RECENT_N][28];   // "<format>|<size>", e.g. "1|4.80-12"
+static lv_obj_t *recentBtn[RECENT_N];
+static lv_obj_t *recentLbl[RECENT_N];
+static const char *FMT_NAMES[3] = {"Metric", "Inch", "Flotation"};
+
+static void recentsShow() {
+  for (uint8_t i = 0; i < RECENT_N; i++) {
+    const char *bar = strchr(recents[i], '|');
+    if (!recents[i][0] || !bar) { lv_obj_add_flag(recentBtn[i], LV_OBJ_FLAG_HIDDEN); continue; }
+    int fmt = constrain(atoi(recents[i]), 0, 2);
+    lv_label_set_text_fmt(recentLbl[i], "%s   (%s)", bar + 1, FMT_NAMES[fmt]);
+    lv_obj_clear_flag(recentBtn[i], LV_OBJ_FLAG_HIDDEN);
+  }
+}
+static void recentsLoad() {
+  prefs.begin("tb", true);
+  char key[4] = "r0";
+  for (uint8_t i = 0; i < RECENT_N; i++) {
+    key[1] = '0' + i;
+    recents[i][0] = 0;
+    prefs.getString(key, recents[i], sizeof(recents[i]));
+  }
+  prefs.end();
+}
+static void recentsAdd(int fmt, const char *size) {
+  char e[28];
+  snprintf(e, sizeof(e), "%d|%s", fmt, size);
+  for (uint8_t i = 0; i < RECENT_N; i++) if (!strcmp(recents[i], e)) return;   // already listed: stays put
+  for (uint8_t i = RECENT_N - 1; i > 0; i--) strcpy(recents[i], recents[i - 1]);  // oldest drops off
+  strcpy(recents[0], e);
+  prefs.begin("tb", false);
+  char key[4] = "r0";
+  for (uint8_t i = 0; i < RECENT_N; i++) { key[1] = '0' + i; prefs.putString(key, recents[i]); }
+  prefs.end();
+  recentsShow();
+}
+static void recent_event_cb(lv_event_t * e) {
+  int i = (int)(intptr_t)lv_event_get_user_data(e);
+  const char *bar = strchr(recents[i], '|');
+  if (!bar) return;
+  lv_dropdown_set_selected(tireFmtDd, constrain(atoi(recents[i]), 0, 2));
+  strncpy(tireText, bar + 1, sizeof(tireText) - 1);
+  showTireResult();
+  statusNote("Press Enter to use it");
 }
 
 // ============================================================ setup
@@ -1037,6 +1200,37 @@ static void setupExtraWidgets() {
   lv_label_set_text(reachLbl, "Find Reach");
   lv_obj_center(reachLbl);
 
+  // Debug tab: Restore Factory Defaults, at the very bottom
+  lv_obj_t *restoreBtn = lv_btn_create(ui_Debug_Tab);
+  lv_obj_set_size(restoreBtn, 220, 45);
+  lv_obj_set_align(restoreBtn, LV_ALIGN_CENTER);
+  lv_obj_set_y(restoreBtn, lv_pct(215));
+  lv_obj_set_style_bg_color(restoreBtn, lv_palette_main(LV_PALETTE_RED), 0);
+  lv_obj_add_event_cb(restoreBtn, restoreButton_event_cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_t *restoreLbl = lv_label_create(restoreBtn);
+  lv_label_set_text(restoreLbl, "Restore Factory Defaults");
+  lv_obj_center(restoreLbl);
+
+  // Tire Info tab: Recents, below the size controls (the tab scrolls)
+  lv_obj_t *rl = lv_label_create(ui_Tire_Info_Tab);
+  lv_label_set_text(rl, "Recent sizes (tap to use):");
+  lv_obj_align(rl, LV_ALIGN_TOP_LEFT, 0, 186);
+  for (uint8_t i = 0; i < RECENT_N; i++) {
+    recentBtn[i] = lv_btn_create(ui_Tire_Info_Tab);
+    lv_obj_set_size(recentBtn[i], 250, 38);
+    lv_obj_align(recentBtn[i], LV_ALIGN_TOP_LEFT, 0, 210 + i * 44);
+    lv_obj_add_event_cb(recentBtn[i], recent_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    recentLbl[i] = lv_label_create(recentBtn[i]);
+    lv_obj_align(recentLbl[i], LV_ALIGN_LEFT_MID, 4, 0);
+  }
+
+  // Saved settings and Recents from the ESP32's flash
+  ScreenPrefs p;
+  prefsLoad(p);
+  prefsApply(p);
+  recentsLoad();
+  recentsShow();
+
   // Result panel starts empty instead of showing placeholder text
   refreshResults();
 }
@@ -1108,6 +1302,7 @@ void loop()
   uint32_t now = millis();
   linkTick(now);
   nanoSendTick(now);
+  prefsTick(now);     // save changed settings ~1.5 s after the last change
 
   delay(5);
 }
