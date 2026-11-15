@@ -36,6 +36,11 @@
 - **Laser auto-off**: the screen switches the laser off 30 s after a Balance,
   unless the Laser button (or Manual Laser) is used first. The web page shows
   the countdown on the Balance tab.
+- **Balance report** (web, Balance tab): CSV or print / Save as PDF, with the
+  phone's date and time, result, tire, weight type and radius, centre of
+  gravity, and each arm's load and the platform's level, which the screen
+  captures by switching the scale and level streams on for a moment right
+  after every Balance. The wheel drawing shows those arm loads too.
 - Needs the **Huge APP** partition scheme (program ~1.3 MB);
   `Screen/ui/partitions.csv` sets the layout. Saved settings carry over.
 

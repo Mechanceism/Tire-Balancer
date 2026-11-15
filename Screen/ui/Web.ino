@@ -67,7 +67,23 @@ static const char *const STREAM_WANT[STREAM_N] = {"level", "sensor", "scale"};
 static uint32_t streamWantMs[STREAM_N] = {0, 0, 0};
 static bool     streamOn[STREAM_N] = {false, false, false};   // switched on by the web page
 
+// ---- Balance report extras. BalanceCompleted only carries angle, grams and
+// total, so right after it the screen turns the scale and level streams on
+// for a moment and keeps the first line of each: every arm's load and how
+// level the platform is, with the tire still on.
+static uint32_t resId = 0;                  // counts Balance results, so a page sees each new one
+static bool     capW = false, capLvl = false, resWOk = false, resLvlOk = false;
+static float    resW[3], resLvl[3];         // kg on A, B, C; pitch, roll off level and frame tilt (deg)
+
 // ------------------------------------------------------------ hooks called from ui.ino
+void webBalanceDone() {
+  resId++;
+  resWOk = resLvlOk = false;
+  capW = capLvl = true;
+  uint32_t now = millis() | 1;
+  streamWantMs[0] = now;                    // LevelDebug and ScaleDebug for STREAM_HOLD_MS
+  streamWantMs[2] = now;
+}
 // kind: '>' sent to the Nano, '<' heard from the Nano, '!' event
 void webLog(char kind, const char *text) {
   uint32_t i = webLogSeq % WEB_LOG_LINES;
@@ -114,6 +130,16 @@ void webNanoLine(const char *line) {
   if (v) { strncpy(nanoVersion, v, sizeof(nanoVersion) - 1); return; }
 
   if (strncmp(line, "# ", 2)) return;
+  if (capW && !strncmp(line, "# W:", 4)) {          // first scale line after a Balance
+    capW = false;
+    resWOk = sscanf(line + 4, "%f,%f,%f", &resW[0], &resW[1], &resW[2]) == 3;
+    return;
+  }
+  if (capLvl && !strncmp(line, "# P:", 4)) {        // first level line after a Balance
+    capLvl = false;
+    resLvlOk = sscanf(line + 4, "%f R:%f B:%f", &resLvl[0], &resLvl[1], &resLvl[2]) == 3;
+    return;
+  }
   const char *body = line + 2;
   for (uint8_t k = 0; k < STATUS_N; k++) {
     if (strncmp(body, STATUS_KEY[k][0], strlen(STATUS_KEY[k][0])) || !statusLineOk(k, body)) continue;
@@ -218,6 +244,9 @@ static void webState() {
 
   // last balance result (metric)
   jInt(o, "have", haveResult);
+  jInt(o, "resId", resId);
+  if (resWOk)   { jKey(o, "resW");   o += '['; o += String(resW[0], 3);   o += ','; o += String(resW[1], 3);   o += ','; o += String(resW[2], 3);   o += ']'; }
+  if (resLvlOk) { jKey(o, "resLvl"); o += '['; o += String(resLvl[0], 2); o += ','; o += String(resLvl[1], 2); o += ','; o += String(resLvl[2], 1); o += ']'; }
   jInt(o, "laserOffIn", laserAutoOffAt ? (long)((int32_t)(laserAutoOffAt - now) / 1000 + 1) : 0);
   jNum(o, "angle", resAngleDeg, 2);
   jNum(o, "massG", resMassG, 2);
@@ -233,6 +262,7 @@ static void webState() {
     jTxt(o, "tireInfo", d);
     float offset = isChecked(weightPosSw) ? STICK_ON_OFFSET_MM : CLIP_ON_OFFSET_MM;
     jNum(o, "weightR", tire.rimMm / 2 + offset, 1);
+    jNum(o, "widthMm", tire.widthMm, 1);
     jNum(o, "rimMm", tire.rimMm, 1);
     jNum(o, "sideMm", tire.sideMm, 1);
   }

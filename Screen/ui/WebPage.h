@@ -128,6 +128,20 @@ svg text{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .chart canvas{width:100%;height:170px;display:block;touch-action:pan-y}
 .tip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.15);display:none;white-space:nowrap;z-index:2}
 .tip i{display:inline-block;width:10px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+/* balance report: only #print is printed, always black on white */
+#print{display:none}
+@media print{
+  html,body{background:#fff!important;color:#111!important}
+  body>*:not(#print){display:none!important}
+  #print{display:block;font:11pt/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111}
+  #print h1{font-size:18pt;margin:0 0 2pt}#print p{margin:0 0 8pt;color:#444}
+  #print svg{display:block;width:70mm;height:auto;margin:4mm auto 0}#print .cap{text-align:center;font-size:9pt}
+  #print table{width:100%;border-collapse:collapse}
+  #print td{padding:3pt 4pt;border-bottom:.5pt solid #bbb;color:#111}#print td:first-child{color:#555;width:42%}
+  #print th{color:#555;border-bottom:.5pt solid #888;padding:9pt 4pt 2pt}
+  #print tr{break-inside:avoid}
+  @page{margin:14mm}
+}
 </style></head><body>
 <header>
   <div class="bar"><h1>Tire Balancer</h1><span id="link" class="pill">...</span><button id="stop" title="Stop everything">STOP</button></div>
@@ -223,6 +237,12 @@ svg text{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
     <svg class="diag" id="wheel" viewBox="-150 -142 300 286" style="max-width:420px"></svg>
     <p class="cap" id="wheelCap"></p>
   </div>
+  <div class="card" id="repCard" style="display:none">
+    <h2>Balance report</h2>
+    <table id="repTable"></table>
+    <div class="row" style="margin-top:10px"><button class="btn" id="repCsv">Save CSV</button><button class="btn" id="repPrint">Print / Save PDF</button></div>
+    <p class="muted small" style="margin:8px 0 0">Date and time come from this phone. To save as PDF, pick "Save as PDF" as the printer. If nothing happens, open http://192.168.4.1 in the phone's own browser: the WiFi sign-in window cannot save files or print.</p>
+  </div>
   <div class="card">
     <h2>Units</h2>
     <div class="sw"><div>Added weight</div><div class="seg" id="gSeg"><button data-v="0">oz</button><button data-v="1">g</button></div></div>
@@ -295,6 +315,7 @@ svg text{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 <div class="overlay" id="busy"><div class="dlg"><div class="spin"></div><h3 id="busyText">Working...</h3><div class="row"><button class="btn danger" id="busyCancel">Cancel</button></div></div></div>
 <div class="overlay" id="dlg"><div class="dlg"><h3 id="dlgTitle"></h3><div id="dlgText"></div><div class="row" id="dlgBtns"></div></div></div>
 <div id="toast"></div>
+<div id="print"></div>
 
 <script>
 "use strict";
@@ -317,7 +338,8 @@ function dialog(title,text,btns){
 }
 function held(n){return hold[n]&&hold[n]>Date.now()}
 function holdFor(n,ms){hold[n]=Date.now()+ms}
-function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+let CSS_OVR=null;   // fixed colours while drawing for print
+function css(n){return (CSS_OVR&&CSS_OVR[n])||getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
 function fmt(v,d){return Number(v).toFixed(d)}
 function sgn(v,d){return (v>0?'+':'')+fmt(v,d)}
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
@@ -782,10 +804,10 @@ function reachDraw(p,st,tp,tr){
 const ARMS=[['A',210],['B',90],['C',330]];
 function polar(r,deg){const a=deg*Math.PI/180;return [r*Math.cos(a),-r*Math.sin(a)]}
 $('#liveCells').onchange=()=>{lastScale=null;drawWheel()};
-function drawWheel(){
-  const svg=$('#wheel'), j=S;if(!j||curTab!='balance')return;
+// d = {ang, g, kg, cgMm, w:[kg A,B,C] or null}; draws into svg with the
+// current colours (or the light ones while printing, see CSS_OVR)
+function wheelSVG(svg,j,d){
   svg.innerHTML='';
-  const live=$('#liveCells').checked, sc_=live&&lastScale&&espNow-lastScale.t<2500?lastScale:null;
   const known=!!j.entered, rim=known?j.rimMm:300, side=known?j.sideMm:110;
   const R=100, k=R/(rim/2+side), rr=rim/2*k, cr=(rim/2+side/2)*k, wr=(known?j.weightR:rim/2+10)*k;
   // tire and wheel
@@ -800,38 +822,105 @@ function drawWheel(){
   ARMS.forEach(([n,a],i)=>{const p0=polar(10,a),p1=polar(cr,a);
     svgEl(svg,'line',{x1:p0[0],y1:p0[1],x2:p1[0],y2:p1[1],stroke:css('--arm'),'stroke-width':4,'stroke-linecap':'round'});
     svgEl(svg,'rect',{x:p1[0]-5,y:p1[1]-5,width:10,height:10,rx:2,fill:css('--arm')});
-    const kgTxt=sc_?(j.lbs?fmt(sc_.w[i]*2.20462,2)+' lbs':fmt(sc_.w[i],2)+' kg'):'';
+    const kgTxt=d.w?(j.lbs?fmt(d.w[i]*2.20462,2)+' lbs':fmt(d.w[i],2)+' kg'):'';
     const name=a==90?'B (90°)':n, top=a==90;
     const lp=top?[0,-R-(kgTxt?28:16)]:polar(R+30,a);
     svgEl(svg,'text',{x:lp[0],y:lp[1],'font-size':12,'font-weight':600,'text-anchor':'middle',fill:css('--ink2')},name);
     if(kgTxt)svgEl(svg,'text',{x:lp[0],y:lp[1]+13,'font-size':11,'text-anchor':'middle',fill:css('--ink2')},kgTxt)});
-  // where the numbers come from: live load cells, or the last Balance
-  let ang=null,g=null,kg=null,dir=null,cgMm=null;
+  if(d.ang==null)return;
+  // centre of gravity (heavy side), drawn larger than life
+  if(d.cgMm!=null){const r=Math.min(45,6+16*Math.log2(1+d.cgMm)),c=polar(r,d.ang+180);
+    svgEl(svg,'line',{x1:0,y1:0,x2:c[0],y2:c[1],stroke:css('--s2'),'stroke-width':2});
+    svgEl(svg,'circle',{cx:c[0],cy:c[1],r:6,fill:css('--s2'),stroke:css('--card'),'stroke-width':2})}
+  // the laser line and the weight
+  const w=polar(wr,d.ang),wl=polar(R,d.ang);
+  svgEl(svg,'line',{x1:0,y1:0,x2:wl[0],y2:wl[1],stroke:css('--s1'),'stroke-width':1.5,'stroke-opacity':.7});
+  svgEl(svg,'rect',{x:-9,y:-5,width:18,height:10,rx:3,fill:css('--s1'),stroke:css('--card'),'stroke-width':2,transform:'translate('+w[0]+','+w[1]+') rotate('+(-d.ang+90)+')'});
+  const gTxt=d.g!=null?(j.grams?fmt(d.g,1)+' g':fmt(d.g/28.3495,2)+' oz'):'';
+  const tp=polar(wr-22,d.ang);
+  if(gTxt)svgEl(svg,'text',{x:tp[0],y:tp[1]+4,'font-size':12,'font-weight':600,'text-anchor':'middle',fill:css('--text'),stroke:css('--wheel'),'stroke-width':3,'paint-order':'stroke'},gTxt);
+}
+// What the Balance tab drawing shows: live load cells, or the last Balance
+function drawWheel(){
+  const j=S;if(!j||curTab!='balance')return;
+  const live=$('#liveCells').checked, sc_=live&&lastScale&&espNow-lastScale.t<2500?lastScale:null;
+  const known=!!j.entered, rim=known?j.rimMm:300, side=known?j.sideMm:110;
+  const d={ang:null,g:null,kg:null,cgMm:null,w:sc_?sc_.w:(!live&&SNAP&&SNAP.resW)?SNAP.resW:null};
   if(sc_){
-    kg=sc_.T;let x=0,y=0;ARMS.forEach(([n,a],i)=>{x+=sc_.w[i]*Math.cos(a*Math.PI/180);y+=sc_.w[i]*Math.sin(a*Math.PI/180)});
-    if(kg>0.5){dir=Math.atan2(y,x)*180/Math.PI;ang=(dir+540)%360;if(known)cgMm=(rim/2+side/2)*Math.hypot(x,y)/kg}
-    if(sc_.ang!=null){ang=sc_.ang;g=sc_.g}
-  }else if(j.have){ang=j.angle;g=j.massG;kg=j.totalKg}
-  if(g!=null&&known&&kg>0&&cgMm==null)cgMm=g/1000*j.weightR/kg;
-  let cap='';
-  if(ang!=null){
-    // centre of gravity (heavy side), drawn larger than life
-    if(cgMm!=null){const d=Math.min(45,6+16*Math.log2(1+cgMm)),c=polar(d,ang+180);
-      svgEl(svg,'line',{x1:0,y1:0,x2:c[0],y2:c[1],stroke:css('--s2'),'stroke-width':2});
-      svgEl(svg,'circle',{cx:c[0],cy:c[1],r:6,fill:css('--s2'),stroke:css('--card'),'stroke-width':2})}
-    // the laser line and the weight
-    const w=polar(wr,ang),wl=polar(R+0,ang);
-    svgEl(svg,'line',{x1:0,y1:0,x2:wl[0],y2:wl[1],stroke:css('--s1'),'stroke-width':1.5,'stroke-opacity':.7});
-    const box=svgEl(svg,'rect',{x:-9,y:-5,width:18,height:10,rx:3,fill:css('--s1'),stroke:css('--card'),'stroke-width':2,transform:'translate('+w[0]+','+w[1]+') rotate('+(-ang+90)+')'});
-    const gTxt=g!=null?(j.grams?fmt(g,1)+' g':fmt(g/28.3495,2)+' oz'):'';
-    const tp=polar(wr-22,ang);
-    if(gTxt)svgEl(svg,'text',{x:tp[0],y:tp[1]+4,'font-size':12,'font-weight':600,'text-anchor':'middle',fill:css('--text'),stroke:css('--wheel'),'stroke-width':3,'paint-order':'stroke'},gTxt);
-    cap=(sc_?'Live: ':'Last Balance: ')+(gTxt?'add '+gTxt+' ':'add weight ')+'at '+fmt(ang,1)+'°'+(kg!=null?', total '+(j.lbs?fmt(kg*2.20462,2)+' lbs':fmt(kg,2)+' kg'):'')+'.';
-    if(cgMm!=null)cap+=' Centre of gravity '+fmt(cgMm,2)+' mm off centre, toward the heavy side (dot, drawn larger).';
+    d.kg=sc_.T;let x=0,y=0;ARMS.forEach(([n,a],i)=>{x+=sc_.w[i]*Math.cos(a*Math.PI/180);y+=sc_.w[i]*Math.sin(a*Math.PI/180)});
+    if(d.kg>0.5){d.ang=(Math.atan2(y,x)*180/Math.PI+540)%360;if(known)d.cgMm=(rim/2+side/2)*Math.hypot(x,y)/d.kg}
+    if(sc_.ang!=null){d.ang=sc_.ang;d.g=sc_.g}
+  }else if(j.have){d.ang=j.angle;d.g=j.massG;d.kg=j.totalKg;if(known&&d.kg>0)d.cgMm=d.g/1000*j.weightR/d.kg}
+  wheelSVG($('#wheel'),j,d);
+  let cap;
+  if(d.ang!=null){
+    const gTxt=d.g!=null?(j.grams?fmt(d.g,1)+' g':fmt(d.g/28.3495,2)+' oz'):'';
+    cap=(sc_?'Live: ':'Last Balance: ')+(gTxt?'add '+gTxt+' ':'add weight ')+'at '+fmt(d.ang,1)+'°'+(d.kg!=null?', total '+(j.lbs?fmt(d.kg*2.20462,2)+' lbs':fmt(d.kg,2)+' kg'):'')+'.';
+    if(d.cgMm!=null)cap+=' Centre of gravity '+fmt(d.cgMm,2)+' mm off centre, toward the heavy side (dot, drawn larger).';
   }else cap=live?(sc_?'Live: not enough load on the arms.':'Waiting for load cell readings...'):'Press Balance to see where the weight goes.';
   if(!known)cap+=' Enter the tire size to draw it to scale.';
   $('#wheelCap').textContent=cap;
 }
+
+// =====================================================================
+// Balance report: CSV or print / PDF, with this phone's date and time.
+// SNAP is a copy of the state taken when this page first saw the result,
+// so changing the tire or Clip/Stick-on afterwards does not change it.
+// =====================================================================
+let SNAP=null, snapId=null, snapTime=null;
+function snapResult(j){
+  if(j.resId!==snapId){snapTime=snapId===null?null:new Date();snapId=j.resId;SNAP=j.have?JSON.parse(JSON.stringify(j)):null;return}
+  if(SNAP){if(j.resW&&!SNAP.resW)SNAP.resW=j.resW;if(j.resLvl&&!SNAP.resLvl)SNAP.resLvl=j.resLvl}
+}
+// Rows: [section] or [item, value]
+function reportRows(){
+  const j=SNAP;if(!j)return null;
+  const r=[], oz=g=>fmt(g/28.3495,2)+' oz', lb=kg=>fmt(kg*2.20462,2)+' lbs';
+  const when=snapTime?snapTime.toLocaleString():'Before this page was opened (report made '+new Date().toLocaleString()+')';
+  r.push(['Balance']);
+  r.push(['Date and time',when]);
+  r.push(['Add weight',fmt(j.massG,1)+' g ('+oz(j.massG)+')']);
+  r.push(['At angle',fmt(j.angle,1)+'° (counter-clockwise from the right side, 0°; where the laser points)']);
+  r.push(['Total weight',fmt(j.totalKg,2)+' kg ('+lb(j.totalKg)+')']);
+  if(j.entered&&j.totalKg>0)r.push(['Centre of gravity off centre',fmt(j.massG/1000*j.weightR/j.totalKg,2)+' mm, toward '+fmt((j.angle+180)%360,1)+'°']);
+  r.push(['Tire']);
+  if(j.entered){
+    r.push(['Size',j.tire]);
+    r.push(['Section width',fmt(j.widthMm,0)+' mm']);
+    r.push(['Sidewall height',fmt(j.sideMm,0)+' mm']);
+    r.push(['Rim diameter',fmt(j.rimMm,0)+' mm ('+fmt(j.rimMm/25.4,1)+' in)']);
+    r.push(['Overall diameter',fmt(j.rimMm+2*j.sideMm,0)+' mm ('+fmt((j.rimMm+2*j.sideMm)/25.4,1)+' in)']);
+    r.push(['Weight type',j.stick?'Stick-on':'Clip-on']);
+    r.push(['Weight radius',fmt(j.weightR,0)+' mm']);
+  }else r.push(['Size','not entered']);
+  if(j.resW){r.push(['Load cells at balance']);ARMS.forEach(([n,a],i)=>r.push(['Arm '+n+' ('+a+'°)',fmt(j.resW[i],3)+' kg']))}
+  if(j.resLvl){r.push(['Platform at balance']);r.push(['Pitch off level',sgn(j.resLvl[0],2)+'°']);r.push(['Roll off level',sgn(j.resLvl[1],2)+'°']);r.push(['Frame tilt',fmt(j.resLvl[2],1)+'°'])}
+  r.push(['Machine']);
+  r.push(['Mass Comp',j.massComp?'On':'Off']);
+  r.push(['Test Weight',j.testMass?'ON - bench test, result not real':'Off']);
+  r.push(['Firmware','Screen V'+j.fw+', Nano '+(j.nv?'V'+j.nv:'unknown')]);
+  return r;
+}
+function drawReport(){
+  const rows=reportRows();
+  $('#repCard').style.display=rows?'':'none';if(!rows)return;
+  $('#repTable').innerHTML=rows.map(x=>x.length==1?'<tr><th colspan="2">'+esc(x[0])+'</th></tr>':'<tr><td>'+esc(x[0])+'</td><td>'+esc(x[1])+'</td></tr>').join('');
+}
+function stamp(){const d=snapTime||new Date(),p=n=>String(n).padStart(2,'0');return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes())}
+$('#repCsv').onclick=()=>{
+  const rows=reportRows();if(!rows)return;let sec='';const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
+  const out=['section,item,value'];rows.forEach(x=>{if(x.length==1)sec=x[0];else out.push([sec,x[0],x[1]].map(q).join(','))});
+  saveFile('tire-balance-'+stamp()+'.csv',out.join('\r\n')+'\r\n','text/csv')};
+// Printing uses the light colours whatever the phone's theme
+const PRINT_COLORS={'--tire':'#4a4a47','--wheel':'#e1e0d9','--axis':'#c3c2b7','--ink3':'#898781','--ink2':'#52514e','--arm':'#898781','--s1':'#2a78d6','--s2':'#eb6834','--card':'#ffffff','--text':'#111111'};
+$('#repPrint').onclick=()=>{
+  const rows=reportRows();if(!rows)return;const j=SNAP,p=$('#print');
+  p.innerHTML='<h1>Tire balance report</h1><p>'+esc(snapTime?snapTime.toLocaleString():new Date().toLocaleString())+(j.entered?' &middot; '+esc(j.tire):'')+'</p>'+
+    '<svg viewBox="-150 -142 300 286"></svg><p class="cap">Seen from above, standing at the screen. Blue: where the weight goes. Orange: centre of gravity (drawn larger).</p><table></table>';
+  CSS_OVR=PRINT_COLORS;try{wheelSVG(p.querySelector('svg'),j,{ang:j.angle,g:j.massG,kg:j.totalKg,cgMm:j.entered&&j.totalKg>0?j.massG/1000*j.weightR/j.totalKg:null,w:j.resW||null})}finally{CSS_OVR=null}
+  p.querySelector('table').innerHTML=rows.map(x=>x.length==1?'<tr><th colspan="2">'+esc(x[0])+'</th></tr>':'<tr><td>'+esc(x[0])+'</td><td>'+esc(x[1])+'</td></tr>').join('');
+  const t=document.title;document.title='tire-balance-'+stamp();window.print();document.title=t;
+};
 
 // ---------- drawing the state
 function setLink(t,c){const e=$('#link');e.textContent=t;e.className='pill '+(c||'')}
@@ -840,7 +929,7 @@ function upTime(s){const h=Math.floor(s/3600),m=Math.floor(s/60)%60;return (h?h+
 function table(id,rows){$(id).innerHTML=rows.map(r=>'<tr><td>'+r[0]+'</td><td'+(r[2]?' class="mono"':'')+'>'+r[1]+'</td></tr>').join('')}
 
 function render(j){
-  if(boot!==j.boot){if(boot!==null){LOG.push({t:0,s:'!(screen restarted)'});LV.length=SN.length=MARKS.length=0;runStart=null}boot=j.boot;seenNote=seenMsg=null;if(j.seq<logSeq)logSeq=0}
+  if(boot!==j.boot){if(boot!==null){LOG.push({t:0,s:'!(screen restarted)'});LV.length=SN.length=MARKS.length=0;runStart=null}boot=j.boot;seenNote=seenMsg=null;snapId=null;if(j.seq<logSeq)logSeq=0}
   S=j;espNow=j.now;
   // link
   if(j.quiet)setLink('Paused: noise','down');else if(j.link)setLink('Nano OK','up');else setLink('No Nano link','down');
@@ -891,7 +980,8 @@ function render(j){
     added.forEach(ingest);
     LOG.push(...added);if(LOG.length>LOG_MAX)LOG.splice(0,LOG.length-LOG_MAX);drawLog(false,added)}
   logSeq=j.seq;
-  drawLive();drawWheel();
+  snapResult(j);
+  drawLive();drawWheel();drawReport();
 
   // info
   table('#infoLink',[['State',j.quiet?'<span class="badc">Paused: noise on RX</span>':j.link?'<span class="okc">Nano OK</span>':'<span class="badc">No link</span>'],

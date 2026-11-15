@@ -182,6 +182,13 @@ Debug) plus:
   screen, to scale once the size is entered: the three arms, where the weight
   goes (with grams/oz) and the centre of gravity (enlarged). With **Live load
   cells** on, the arms show their kg and the drawing follows the load live.
+- **Balance tab, Balance report** (after a Balance): date and time (from the
+  phone), weight and angle, total, centre of gravity, the tire, weight type
+  and radius, each arm's load and how level the platform was right after the
+  Balance, Mass Comp / Test Weight, firmware. **Save CSV**, or **Print / Save
+  PDF** (one page with the wheel drawing). Nothing is kept on the machine; save
+  the report if you need it. Saving and printing need the phone's own browser
+  (http://192.168.4.1), not the WiFi sign-in window.
 - **Console**: every line sent to and received from the Nano, a box to type
   commands, **Save** to download the log (with times) as a text file, and
   the full command list from [Protocol.md](Protocol.md) with a short

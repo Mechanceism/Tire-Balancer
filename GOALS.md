@@ -44,12 +44,17 @@ ESP32 core's own WebServer (no extra libraries), page embedded in the program.
   times, CSV); reach map (allowed frame tilt, Level start line, frame now).
   Debug streams switched on only while shown. Checked in a browser against a
   simulated Nano; **still to test on a phone with the machine.**
-- [ ] Settings table: every Nano setting from `Status`, editable, with Save
-  (the screen already keeps the Status lines; the Info tab lists them)
-- [ ] Calibration wizard: Tare, CalA/B/C with instructions and checks
-- [ ] Balance history kept on the screen (CSV download); the Huge APP layout
-  leaves ~900 KB of file storage for it
-- [ ] QR code on the touch screen to join the WiFi / open the page
+- [x] Stage 2 tested on a phone; tweaks: Live view starts Off, console lists
+  every command with its description, Info shows Status one setting per row,
+  Kp slider removed, laser off 30 s after a Balance.
+- [x] Stage 3: Balance report on the web page (CSV, print / PDF) with the
+  phone's date and time, the tire, the result, each arm's load and the
+  platform's level captured right after the Balance. **To test on a phone.**
+- [ ] Stage 3: Load Cell Calibration on the touch screen and the web page
+  (design agreed, see the conversation of 2026-11-14 / CHANGELOG once built)
+- Decided against: an editable settings table (Info shows the settings; the
+  console's command list edits them), a stored balance history (the report is
+  saved on the phone instead), a QR code (the WiFi is open).
 
 Not planned: firmware updates over WiFi. The Nano protocol stays as it is;
 new information comes from what the Nano already sends (`Status`, the debug

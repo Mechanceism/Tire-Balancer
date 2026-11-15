@@ -715,6 +715,7 @@ static void handleNanoLine(char *line) {
     resTotalKg  = total;
     haveResult  = true;
     laserAutoOffAt = millis() + LASER_AUTO_OFF_MS;  // Balance switched the laser on
+    webBalanceDone();                               // the web page's report: arm loads and level now
     refreshResults();
     if (waiting == WAIT_BALANCE) {
       waiting = WAIT_NONE;
