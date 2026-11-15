@@ -6,6 +6,18 @@
   like the screen's. Set the IDE's Sketchbook location to `Nano` to build
   without installing anything; see docs/Setup.md.
 - `Tools/build.ps1` now builds each board with only the repo's libraries.
+- **Screen V0.5.0: web page, stage 1.** The screen makes an open WiFi
+  hotspot "TireBalancer" and serves a phone-first page at 192.168.4.1 (opens
+  by itself as a sign-in page): everything the touch screen does, plus STOP,
+  a safety tick required for anything that moves or switches the laser on,
+  a console (live Nano log, send commands, save log) and an Info tab. Built
+  on the ESP32 core's own WebServer, so no new libraries. The Nano is
+  unchanged.
+- The touch screen's button handlers became shared `do...()` actions used by
+  both the touch screen and the web page; screen changes from code all go
+  through the deferred `requestScreen()`.
+- Needs the **Huge APP** partition scheme (program ~1.3 MB);
+  `Screen/ui/partitions.csv` sets the layout. Saved settings carry over.
 
 ## Nano V0.7.0 + Screen V0.4.0 (2026-11-14) - boards linked, tire tested
 

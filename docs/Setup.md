@@ -54,10 +54,15 @@ The CYD is picky about library versions and settings, which is why its
 libraries are bundled.
 
 1. Sketchbook location = the repo's `Screen` folder, restart the IDE.
-2. Open `Screen/ui/ui.ino`.
+2. Open `Screen/ui/ui.ino` (`Web.ino` and `WebPage.h` open with it).
 3. Boards Manager: install **esp32** by Espressif Systems.
 4. Board: *ESP32 Dev Module*. Tools > Flash Mode: *DIO*.
-5. Upload. If the upload will not start, try a USB 2 port.
+5. Tools > Partition Scheme: **Huge APP (3MB No OTA/1MB SPIFFS)**. With the
+   web page the program is about 1.3 MB, more than the default scheme's
+   1.25 MB, and the IDE stops with "Sketch too big" if this is left on Default.
+   (`partitions.csv` in the sketch folder makes sure the board gets this
+   layout either way. Saved settings and Recents are kept when switching.)
+6. Upload. If the upload will not start, try a USB 2 port.
 
 To edit the screens, open `Screen/squareline/CYD_SD2_V0.2.spj` in SquareLine
 Studio and export into `Screen/libraries/ui`. Several parts are built or
@@ -132,6 +137,40 @@ newest first. Tap one to fill in the format and size, then press **Enter**.
 4. **Tire Info**: choose the format, tap the size box and type the size as
    printed (or tap a Recent), choose Clip-on or Stick-on, press **Enter**.
 5. **Balance**. Read the weight and angle; the laser points at the spot.
+
+## Web page (phone or laptop)
+
+The screen makes its own WiFi hotspot, so a phone can run the machine:
+
+1. On the phone, join the WiFi **TireBalancer** (open, no password). It has
+   no internet; tell the phone to stay connected if it asks.
+2. The page usually opens by itself as a "sign in to network" page. If not,
+   open a browser at **http://192.168.4.1**. (The touch screen's Debug tab,
+   at the bottom, shows this too, with the number of phones connected.)
+
+The page has the same tabs as the touch screen (Level, Tire Info, Balance,
+Debug) plus:
+
+- **STOP** at the top, always available: stops everything on the Nano.
+- **Safety tick** - "I can see the machine and it is clear". Until it is
+  ticked, everything that moves the platform or switches the laser on
+  (Level, Balance, Laser, Find Reach, manual laser, console commands that are
+  not read-only) is greyed out, and the screen refuses those requests anyway.
+  It clears itself after 5 minutes unused or when the WiFi link drops.
+- **Tire Info**: type the size with the phone's keyboard (format is found
+  automatically); it shows what the size means as you type.
+- **Console**: every line sent to and received from the Nano, a box to type
+  commands (see [Protocol.md](Protocol.md)), quick buttons for `Status` and
+  the debug outputs, and **Save** to download the log as a text file.
+- **Info**: link counters, firmware versions, uptime, free memory.
+
+The touch screen and the page always agree: a change on either shows on the
+other (and on every connected phone) within a second, and anything started
+from a phone shows the same Leveling/Balancing page on the touch screen, with
+its Cancel button working as usual.
+
+The page is in `Screen/ui/WebPage.h` (plain HTML/CSS/JavaScript, edit it
+directly); the server side is `Screen/ui/Web.ino`.
 
 ## Tuning the leveling
 

@@ -11,9 +11,19 @@
   A few things are added or re-labelled in code in setupExtraWidgets() so the
   SquareLine project did not have to change.
 
+  The same controls (and more) are on a web page: the screen makes its own
+  open WiFi hotspot "TireBalancer" and serves the page at 192.168.4.1
+  (Web.ino, WebPage.h).
+
   Before uploading: File > Preferences > Sketchbook location = the "Screen"
-  folder (the parent of this "ui" folder). See docs/Setup.md.
+  folder (the parent of this "ui" folder), and Tools > Partition Scheme >
+  "Huge APP (3MB No OTA/1MB SPIFFS)". See docs/Setup.md.
 */
+// Web page (Web.ino): the screen's own WiFi hotspot. These come before
+// TFT_eSPI.h, which includes FS.h in a way that hides "FS" from WebServer.h.
+#include <WiFi.h>
+#include <WebServer.h>
+#include <DNSServer.h>
 #include <lvgl.h>
 #include <TFT_eSPI.h>
 #include <ui.h>
@@ -21,7 +31,7 @@
 #include <stdarg.h>
 #include <Preferences.h>         // settings kept in the ESP32's flash (NVS)
 
-#define SCREEN_FW_VERSION "0.4.0"
+#define SCREEN_FW_VERSION "0.5.0"
 
 // ------------------------------------------------------------ Nano link
 // The Nano link uses IO35 (RX) and IO22 (TX), NOT the 4-pin serial
@@ -138,7 +148,8 @@ lv_obj_t *tireSizeLbl  = NULL;   // Tire Info: the size entered (tap to edit)
 lv_obj_t *tireResult   = NULL;   // Tire Info: what the size means
 lv_obj_t *tirePad      = NULL;   // full-screen number pad
 lv_obj_t *tirePadHead  = NULL;   // number pad: template with the digits typed so far
-char      tireText[32] = "";     // the size as entered, e.g. "4.80-12"
+char      tireText[32] = "";     // the size in the size box, e.g. "4.80-12"
+char      tireEnteredText[32] = "";   // the size last sent with Enter
 uint32_t  statusNoteUntil = 0;
 
 /*Don't forget to set Sketchbook location in File/Preferences to the path of your UI project (the parent foder of this INO file)*/
@@ -266,7 +277,14 @@ static void nanoWriteLine(const char *cmd) {
   for (const char *p = cmd; *p; p++) x ^= (uint8_t)*p;
   NanoSerial.printf("%s*%02X\n", cmd, x);
   Serial.printf("> %s\n", cmd);                       // USB log: everything sent to the Nano
+  webLog('>', cmd);
   lastSendMs = millis();
+}
+
+// "! ..." line in the USB log and the web console: link events and the like
+void logEvent(const char *text) {
+  Serial.printf("! %s\n", text);
+  webLog('!', text);
 }
 
 // Queue a command, printf style: nanoSend("Kp%d", 30);
@@ -321,6 +339,7 @@ static bool isChecked(lv_obj_t *obj) {
 void statusNote(const char *text) {
   lv_label_set_text(statusLabel, text);
   statusNoteUntil = millis() + 3000;
+  webNote(text);
 }
 
 // While the link is down the counters tell you why:
@@ -350,24 +369,30 @@ void showMessage(const char *title, const char *text) {
   messageBox = lv_msgbox_create(NULL, title, text, NULL, true);
   lv_obj_center(messageBox);
   lv_obj_add_event_cb(messageBox, messageBoxDeleted, LV_EVENT_DELETE, NULL);
+  webMessage(title, text);
 }
 
-// Going back to the menu is only requested here and done in loop() once no
-// screen animation is running: starting a screen fade while another one is
-// still running crashed the ESP32 (an Err arriving during the 0.25 s fade to
-// the leveling page restarted the screen).
-static bool backToMenuPending = false;
+// Screen changes from code (Nano events, the web page) are only requested
+// here and done in loop() once no screen animation is running: starting a
+// screen fade while another one is still running crashed the ESP32 (an Err
+// arriving during the 0.25 s fade to the leveling page restarted the screen).
+static lv_obj_t *pendingScreen = NULL;
+
+static void requestScreen(lv_obj_t *scr) {
+  pendingScreen = scr;                              // the newest request wins
+}
 
 static void backToOptionMenu() {
-  backToMenuPending = true;
+  requestScreen(ui_OptionMenu);
 }
 
 static void screenTick() {
-  if (!backToMenuPending) return;
+  if (!pendingScreen) return;
   lv_disp_t *d = lv_disp_get_default();
   if (d->scr_to_load) return;                       // a screen change is still animating
-  backToMenuPending = false;
-  if (lv_scr_act() != ui_OptionMenu) lv_scr_load_anim(ui_OptionMenu, LV_SCR_LOAD_ANIM_FADE_ON, 250, 0, false);
+  lv_obj_t *scr = pendingScreen;
+  pendingScreen = NULL;
+  if (lv_scr_act() != scr) lv_scr_load_anim(scr, LV_SCR_LOAD_ANIM_FADE_ON, 250, 0, false);
 }
 
 static void startWaiting(Waiting what, uint32_t timeoutMs) {
@@ -550,7 +575,7 @@ static void prefsWriteNow() {
   prefs.putBool("lb", isChecked(ui_TestWeightSwitch2));
   prefs.putBool("so", isChecked(weightPosSw));
   prefs.end();
-  Serial.println("! settings saved");
+  logEvent("settings saved");
 }
 static void prefsDirty() { prefsDirtyAt = millis() | 1; }
 static void prefsTick(uint32_t now) {
@@ -600,6 +625,7 @@ static bool findValue(const char *line, const char *key, float &value) {
 
 static void handleNanoLine(char *line) {
   Serial.printf("< %s\n", line);                     // USB log: everything heard from the Nano
+  webLog('<', line);
 
   // Our own commands coming back means RX hears TX: on a level converter
   // this happens when its LV pin is not on 3.3 V (the channels' pull-ups
@@ -637,10 +663,11 @@ static void handleNanoLine(char *line) {
   }
 
   lastHeardMs = millis();
+  webNanoLine(line);                                 // picks up the Nano's version
   bool wasUp = linkUp;
   if (!linkUp) {
     linkUp = true;
-    Serial.println("! link up");
+    logEvent("link up");
     showLinkState();
     syncNano();
   }
@@ -720,7 +747,7 @@ static void nanoReceiveTick() {
       if (++noiseCount >= NOISE_BYTES) {
         if (!quiet) {
           quiet = true;
-          Serial.printf("! non-text bytes on RX - pausing sends\n");
+          logEvent("non-text bytes on RX - pausing sends");
           showLinkState();
         }
         quietUntil = millis() + QUIET_MS;
@@ -760,7 +787,7 @@ static void linkTick(uint32_t now) {
 
   if (linkUp && (int32_t)(now - lastHeardMs) > (int32_t)LINK_TIMEOUT_MS) {
     linkUp = false;
-    Serial.println("! link down");
+    logEvent("link down");
     showLinkState();
   }
 
@@ -790,10 +817,13 @@ static void linkTick(uint32_t now) {
   }
 }
 
-// ============================================================ UI event handlers
-// Buttons
-void LevelButton_event_handler(lv_event_t * e) {
-  if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+// ============================================================ actions
+// What each button does, shared by the touch screen and the web page (Web.ino).
+// The touch handlers below only call these. Screen changes for the touch
+// buttons are made by SquareLine itself; the web page asks for them with
+// requestScreen().
+
+void doLevel() {
   reachRunning = false;
   lv_label_set_text(ui_LevelLoadingLabel, "Leveling...");
   bool autoStop = isChecked(ui_AutoStopCheckbox);
@@ -801,11 +831,95 @@ void LevelButton_event_handler(lv_event_t * e) {
   nanoSend("Level");
   startWaiting(WAIT_LEVEL, autoStop ? LEVEL_TIMEOUT_MS : 0);
 }
-void LevelCancelButton_event_handler(lv_event_t * e) {
-  if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+void doLevelCancel() {
   waiting = WAIT_NONE;
   nanoSendNow(reachRunning ? "Stop" : "LevelCancel");    // LevelCancel does not stop FindReach
   reachRunning = false;
+}
+void doFindReach() {
+  reachRunning = true;
+  lv_label_set_text(ui_LevelLoadingLabel, "Testing boundaries...");
+  requestScreen(ui_LevelLoadingMenu);
+  nanoSend("FindReach");
+  startWaiting(WAIT_LEVEL, REACH_TIMEOUT_MS);        // it ends by leveling: LevelCompleted
+}
+void doTare() {
+  nanoSend("Tare");
+  startWaiting(WAIT_TARE, TARE_TIMEOUT_MS);
+  statusNote("Taring...");
+}
+void doBalance() {
+  if (tireEntered) sendTireInfo();      // in case the Nano restarted since it was entered
+  nanoSend("Balance");
+  startWaiting(WAIT_BALANCE, BALANCE_TIMEOUT_MS);
+}
+void doBalanceCancel() {
+  waiting = WAIT_NONE;
+  nanoSendNow("BalanceCancel");
+}
+// Stops everything on the Nano (web page Stop button)
+void doStop() {
+  waiting = WAIT_NONE;
+  reachRunning = false;
+  nanoSendNow("Stop");
+  backToOptionMenu();
+  statusNote("Stopped");
+}
+// Sends the size in the size box. Returns false if it is not a valid size.
+bool doTireEnter() {
+  TireSize t;
+  if (!parseTireSize(tireText, t)) return false;
+  tire = t;
+  tireEntered = true;
+  strcpy(tireEnteredText, tireText);
+  sendTireInfo();
+  recentsAdd(lv_dropdown_get_selected(tireFmtDd), tireText);
+  statusNote("Tire info sent");
+  return true;
+}
+void doSpeedEnter() {
+  enteredMin = lv_slider_get_value(ui_MinSpeedSlider);
+  enteredMax = lv_slider_get_value(ui_MaxSpeedSlider);
+  enteredKp  = lv_slider_get_value(ui_SpeedCurveSlider);               // re-labelled "Level Gain Kp"
+  nanoSend("MinSpeed%d", enteredMin);
+  nanoSend("MaxSpeed%d", enteredMax);
+  nanoSend("Kp%d", enteredKp);
+  nanoSend("Save");                       // also kept by the Nano, for use without the screen
+  prefsDirty();
+  statusNote("Speeds saved");
+}
+void doRestoreDefaults() {
+  prefsApply(PREF_DEFAULTS);
+  prefsWriteNow();
+  syncNano();                             // the Nano uses them at once...
+  nanoSend("Save");                       // ...and keeps the speeds/gain too
+  statusNote("Defaults restored");
+}
+// Laser angle -/+ (1 deg steps)
+void doLaserStep(int step) {
+  int v = constrain((int)lv_slider_get_value(ui_ManualLaserAngleSlider) + step, 0, 360);
+  lv_slider_set_value(ui_ManualLaserAngleSlider, v, LV_ANIM_OFF);
+  lv_event_send(ui_ManualLaserAngleSlider, LV_EVENT_VALUE_CHANGED, NULL);   // label + send to the Nano
+}
+// The laser is pointing at the real 90 deg (the far side): make the current
+// manual angle count as 90. The Nano adjusts and saves its LaserOffset.
+bool doLaserSet90() {
+  if (!isChecked(ui_ManualLaserSwitch)) { statusNote("Turn Manual Laser on first"); return false; }
+  nanoSend("LaserSet90");
+  setSlider(ui_ManualLaserAngleSlider, ui_ManualLaserAngleValueLabel, 90);
+  statusNote("Laser 90 deg set");
+  return true;
+}
+
+// ============================================================ UI event handlers
+// Buttons
+void LevelButton_event_handler(lv_event_t * e) {
+  if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+  doLevel();
+}
+void LevelCancelButton_event_handler(lv_event_t * e) {
+  if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+  doLevelCancel();
 }
 
 // ---- Debug tab: Find Reach (platform limits), with a confirmation first
@@ -814,12 +928,7 @@ static void reachConfirm_event_cb(lv_event_t * e) {
   const char *t = lv_msgbox_get_active_btn_text(mb);
   bool start = t && !strcmp(t, "Start");
   lv_msgbox_close_async(mb);
-  if (!start) return;
-  reachRunning = true;
-  lv_label_set_text(ui_LevelLoadingLabel, "Testing boundaries...");
-  lv_scr_load_anim(ui_LevelLoadingMenu, LV_SCR_LOAD_ANIM_FADE_ON, 250, 0, false);
-  nanoSend("FindReach");
-  startWaiting(WAIT_LEVEL, REACH_TIMEOUT_MS);        // it ends by leveling: LevelCompleted
+  if (start) doFindReach();
 }
 
 static void reachButton_event_cb(lv_event_t * e) {
@@ -832,20 +941,15 @@ static void reachButton_event_cb(lv_event_t * e) {
 }
 void CalibrateButton_event_handler(lv_event_t * e) {        // the "Tare" button
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  nanoSend("Tare");
-  startWaiting(WAIT_TARE, TARE_TIMEOUT_MS);
-  statusNote("Taring...");
+  doTare();
 }
 void BalanceButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  if (tireEntered) sendTireInfo();      // in case the Nano restarted since it was entered
-  nanoSend("Balance");
-  startWaiting(WAIT_BALANCE, BALANCE_TIMEOUT_MS);
+  doBalance();
 }
 void BalanceCancelButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  waiting = WAIT_NONE;
-  nanoSendNow("BalanceCancel");
+  doBalanceCancel();
 }
 void LaserButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
@@ -853,16 +957,7 @@ void LaserButton_event_handler(lv_event_t * e) {
 }
 void TireInfoEnterButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  TireSize t;
-  if (!parseTireSize(tireText, t)) {
-    showMessage("Tire size", "Tap the size box and enter the tire size first.");
-    return;
-  }
-  tire = t;
-  tireEntered = true;
-  sendTireInfo();
-  recentsAdd(lv_dropdown_get_selected(tireFmtDd), tireText);
-  statusNote("Tire info sent");
+  if (!doTireEnter()) showMessage("Tire size", "Tap the size box and enter the tire size first.");
 }
 
 // ---- size formats for the number pad (TireFmt is defined near the top)
@@ -967,15 +1062,7 @@ static void tireFmt_event_cb(lv_event_t * e) {
 }
 void SpeedEnterButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  enteredMin = lv_slider_get_value(ui_MinSpeedSlider);
-  enteredMax = lv_slider_get_value(ui_MaxSpeedSlider);
-  enteredKp  = lv_slider_get_value(ui_SpeedCurveSlider);               // re-labelled "Level Gain Kp"
-  nanoSend("MinSpeed%d", enteredMin);
-  nanoSend("MaxSpeed%d", enteredMax);
-  nanoSend("Kp%d", enteredKp);
-  nanoSend("Save");                       // also kept by the Nano, for use without the screen
-  prefsDirty();
-  statusNote("Speeds saved");
+  doSpeedEnter();
 }
 
 // Sliders that send while they move (throttled in linkTick)
@@ -1024,12 +1111,7 @@ static void restoreConfirm_event_cb(lv_event_t * e) {
   const char *t = lv_msgbox_get_active_btn_text(mb);
   bool go = t && !strcmp(t, "Restore");
   lv_msgbox_close_async(mb);
-  if (!go) return;
-  prefsApply(PREF_DEFAULTS);
-  prefsWriteNow();
-  syncNano();                             // the Nano uses them at once...
-  nanoSend("Save");                       // ...and keeps the speeds/gain too
-  statusNote("Defaults restored");
+  if (go) doRestoreDefaults();
 }
 static void restoreButton_event_cb(lv_event_t * e) {
   static const char *btns[] = {"Restore", "Cancel", ""};
@@ -1042,18 +1124,10 @@ static void restoreButton_event_cb(lv_event_t * e) {
 
 // ---- Debug tab: laser angle -/+ (1 deg steps) and "Set 90"
 static void laserStep_event_cb(lv_event_t * e) {
-  int step = (int)(intptr_t)lv_event_get_user_data(e);
-  int v = constrain((int)lv_slider_get_value(ui_ManualLaserAngleSlider) + step, 0, 360);
-  lv_slider_set_value(ui_ManualLaserAngleSlider, v, LV_ANIM_OFF);
-  lv_event_send(ui_ManualLaserAngleSlider, LV_EVENT_VALUE_CHANGED, NULL);   // label + send to the Nano
+  doLaserStep((int)(intptr_t)lv_event_get_user_data(e));
 }
-// The laser is pointing at the real 90 deg (the far side): make the current
-// manual angle count as 90. The Nano adjusts and saves its LaserOffset.
 static void laserSet90_event_cb(lv_event_t * e) {
-  if (!isChecked(ui_ManualLaserSwitch)) { statusNote("Turn Manual Laser on first"); return; }
-  nanoSend("LaserSet90");
-  setSlider(ui_ManualLaserAngleSlider, ui_ManualLaserAngleValueLabel, 90);
-  statusNote("Laser 90 deg set");
+  doLaserSet90();
 }
 
 // ---- Tire Info: Recents - the last 5 different sizes entered, newest first
@@ -1330,6 +1404,7 @@ void setup() {
   Wire.begin(I2C_SDA, I2C_SCL);
   Serial.begin(LOG_BAUD);
   Serial.println("\nTire balancer screen " SCREEN_FW_VERSION " - Nano link: RX IO35, TX IO22");
+  NanoSerial.setRxBufferSize(1024);   // room for ~1 s of Nano lines while a web page is being sent
   NanoSerial.begin(NANO_BAUD, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
 
   lv_init();
@@ -1379,6 +1454,8 @@ void setup() {
   lv_obj_add_event_cb(ui_TestWeightSwitch2, UnitsSwitch_event_cb, LV_EVENT_VALUE_CHANGED, NULL);   // total weight: kg / lbs
   // Checkbox
   lv_obj_add_event_cb(ui_AutoStopCheckbox, AutoStopCheckbox_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
+
+  webSetup();           // WiFi hotspot + web page (Web.ino)
 }
 
 void loop()
@@ -1394,6 +1471,7 @@ void loop()
   linkTick(now);
   nanoSendTick(now);
   prefsTick(now);     // save changed settings ~1.5 s after the last change
+  webTick(now);       // web page requests (run here, so they can use LVGL safely)
 
   delay(5);
 }

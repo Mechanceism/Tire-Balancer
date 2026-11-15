@@ -21,7 +21,7 @@ try {
 
   Write-Host "== Screen ==" -ForegroundColor Cyan
   $env:ARDUINO_DIRECTORIES_USER = "$repo\Screen"
-  & $cli compile --fqbn "esp32:esp32:esp32:FlashMode=dio" "$repo\Screen\ui"
+  & $cli compile --fqbn "esp32:esp32:esp32:FlashMode=dio,PartitionScheme=huge_app" "$repo\Screen\ui"
   $screen = $LASTEXITCODE
 } finally {
   $env:ARDUINO_DIRECTORIES_USER = $oldUser

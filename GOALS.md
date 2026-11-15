@@ -26,7 +26,32 @@ where to put it.
 
 - **Nano**: everything real-time (leveling, weighing, laser). Metric only.
 - **Screen**: the user interface, all unit conversion, and the user settings
-  (kept in its flash and sent to the Nano after every handshake).
+  (kept in its flash and sent to the Nano after every handshake). Also serves
+  the web page over its own WiFi hotspot; the Nano does not know about it.
+
+## Web page (in stages)
+
+The screen's open hotspot "TireBalancer" serves a page at 192.168.4.1 that
+does everything the touch screen does (docs/Setup.md, "Web page"). Built on the
+ESP32 core's own WebServer (no extra libraries), page embedded in the program.
+
+- [x] Stage 1 (Screen V0.5.0): hotspot, sign-in pop-up, all touch screen
+  controls, STOP, safety tick, console, Info tab. Checked in a browser against
+  a simulated machine; **still to test on a phone with the machine.**
+- [ ] Balance result on a wheel drawing: weight position, grams, the centre of
+  gravity, each load cell's reading on its arm
+- [ ] Live level view: platform and frame as bubble levels
+- [ ] Reach map: the allowed area with the frame's live position and margin
+- [ ] Live tuning charts during Level (pitch, roll, actuator effort)
+- [ ] Settings table: every Nano setting from `Status`, editable, with Save
+- [ ] Calibration wizard: Tare, CalA/B/C with instructions and checks
+- [ ] Balance history kept on the screen (CSV download); the Huge APP layout
+  leaves ~900 KB of file storage for it
+- [ ] QR code on the touch screen to join the WiFi / open the page
+
+Not planned: firmware updates over WiFi. The Nano protocol stays as it is;
+new information comes from what the Nano already sends (`Status`, the debug
+lines, events).
 
 ## Next up
 
