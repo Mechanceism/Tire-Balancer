@@ -65,9 +65,10 @@ Motion and leveling (2026-11-13):
       (was 2.7-6.4 s), settling within ~0.03-0.09 deg.
 - [x] Samples that are not tilt (jolts, bad I2C reads) are skipped
 - [x] Reach area measured (FindReach): level must be inside it for the
-      frame's tilt. Allowed frame tilt depends on direction: only ~3.4 deg
-      with the far (90 deg) side high, up to ~21 deg with the 225 deg side
-      high (table in docs/Setup.md). Old code used a single 13 deg.
+      frame's tilt. Allowed frame tilt depends on direction: 10.3-23.5 deg
+      (table in docs/Setup.md). Old code used a single 13 deg. Re-measured
+      2026-11-14 after the frame MPU's roll was found backwards (by lifting
+      the frame at 0/180/270 deg with the actuators off) and fixed.
 - [x] MPU orientation is a setting in machine axes (TopAxisX/Y, BaseAxisX/Y);
       platform MPU is upside down, frame MPU face up (checked with a block
       under the 270 deg side, docs/Setup.md)
@@ -121,9 +122,6 @@ Screen to Nano link (2026-11-14):
       (`CLIP_ON_OFFSET_MM`, `STICK_ON_OFFSET_MM` in Screen/ui/ui.ino)
 - [ ] Repeatability test: same wheel, 10 runs; then with known added weights
 - [ ] Decide result rounding from that data
-- [ ] Optional (mechanical): level sits near the actuators' retracted ends.
-      Moving the mounts so level is nearer mid-stroke would allow more slope
-      toward the far side.
 
 ## Ideas for later
 

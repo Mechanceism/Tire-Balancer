@@ -113,24 +113,22 @@ the result. `Level` then refuses with `Err BaseTilt` if level is not at least
 stops if the frame is moved out of range. `M:` in the level debug line shows
 the current margin.
 
-**The table below is out of date:** it was measured while the frame MPU's roll
-was backwards. It will be replaced after `FindReach` is run again.
-
-How far the frame may tilt depends on which side is high (measured 2026-11-13):
+How far the frame may tilt depends on which side is high (measured 2026-11-14,
+after the frame MPU's roll sign was fixed):
 
 | Frame side raised | Max tilt |
 |---|---|
-| 0° (right) | 6.9° |
-| 45° | 3.3° |
-| 90° (far side, actuators) | 3.4° |
-| 135° | 7.9° |
-| 180° (left) | 16.5° |
-| 225° | 20.9° |
-| 270° (screen side) | 18.6° |
-| 315° | 15.3° |
+| 0° (right) | 23.5° |
+| 45° | 12.1° |
+| 90° (far side, actuators) | 11.5° |
+| 135° | 10.3° |
+| 180° (left) | 20.0° |
+| 225° | 12.5° |
+| 270° (screen side) | 15.4° |
+| 315° | 14.7° |
 
-At level the actuators are near their retracted end-stops, which is why the
-far side has so little room.
+(An earlier table showed only ~3.4° toward the far side; that came from the
+frame's roll being read backwards.)
 
 ## MPU mounting (orientation settings)
 

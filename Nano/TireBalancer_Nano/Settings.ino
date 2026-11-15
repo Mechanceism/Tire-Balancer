@@ -45,9 +45,9 @@ void settingsDefaults() {
 
   // Reach area from FindReach on 2026-11-13. Run FindReach again after any
   // change to the frame, actuators or MPU mounting.
-  // (Measured with the frame at -17 deg pitch, after the frame roll sign fix;
-  // agreed within ~1 deg with the same corners measured at -8.5 deg.)
-  const float reach[4][2] = {{22.68, 27.93}, {18.93, -5.07}, {-8.47, -3.06}, {-10.06, 23.81}};
+  // (Re-measured 2026-11-14 after the frame MPU's roll was found backwards
+  // and fixed - the previous area was lopsided because of it.)
+  const float reach[4][2] = {{20.93, 18.76}, {17.38, -13.72}, {-11.23, -13.58}, {-11.32, 14.50}};
   memcpy(cfg.reach, reach, sizeof(reach));
 
   cfg.topAxis[0]  = TOP_AXIS_X;
