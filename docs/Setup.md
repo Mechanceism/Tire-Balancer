@@ -113,6 +113,9 @@ the result. `Level` then refuses with `Err BaseTilt` if level is not at least
 stops if the frame is moved out of range. `M:` in the level debug line shows
 the current margin.
 
+**The table below is out of date:** it was measured while the frame MPU's roll
+was backwards. It will be replaced after `FindReach` is run again.
+
 How far the frame may tilt depends on which side is high (measured 2026-11-13):
 
 | Frame side raised | Max tilt |
@@ -146,21 +149,28 @@ Commands: `TopAxisX<n> TopAxisY<n>` (platform MPU), `BaseAxisX<n> BaseAxisY<n>`
 (frame MPU), then `Save`. Machine Z is worked out from X and Y, so an upside-down
 board needs nothing extra. Defaults are in `Config.h`.
 
-Current machine (2026-11-13): platform `TopAxisX2 TopAxisY1` (upside down),
-frame `BaseAxisX-2 BaseAxisY1` (face up).
+Current machine (2026-11-14): platform `TopAxisX2 TopAxisY1`, frame
+`BaseAxisX2 BaseAxisY1`.
 
 Checking a mounting with `SensorDebugOn` (`T:` = platform pitch,roll; `F:` =
-frame pitch,roll; `Z:` = platform, frame):
+frame pitch,roll). Send `Stop` first: with the actuators off the platform rides
+on the frame, so **both MPUs must change by the same amount, the same way**.
 
-1. `Z:++` - both read "up". A `-` means that MPU's X/Y pair is wrong.
-2. Put a block under the frame at the **270° side** (the screen side, the
-   easiest place to lift). Pitch (first number of both `T:` and `F:`) must go
-   **down** by roughly the same amount, and roll (second number) barely change.
-   If an MPU's pitch goes up instead, or its roll changes rather than its
-   pitch, its X/Y pair is wrong.
+1. Lift the frame at the **270° side** (screen side): pitch (first number of
+   `T:` and `F:`) goes **down** on both; roll barely changes.
+2. Lift the frame at the **0° side** (right): roll (second number) goes **up**
+   on both; pitch barely changes. (The 180° side works too: roll goes down.)
 
-These two checks are enough: once machine Y (step 2) and machine Z (step 1)
-are right, machine X - and so roll - follows from them.
+Both lifts are needed - one checks pitch, the other roll. If one MPU moves the
+wrong way, flip the sign of that MPU's setting for that axis (`BaseAxisY` for
+pitch, `BaseAxisX` for roll, or the `TopAxis` ones). After the platform MPU is
+changed, also confirm with a jog that the platform, not just the readings,
+moves the right way.
+
+Do not rely on the `Z:` field (whether each MPU's Z reads "up"). On this
+machine it disagreed with the lift test: going by it, the frame's roll was set
+backwards, which made the reach check refuse easy frame angles and attempt
+impossible ones (fixed 2026-11-14).
 
 After changing a mounting: re-check `PitchOffset`/`RollOffset` with a spirit
 level, run `FindReach` again, and (platform MPU) confirm leveling does not

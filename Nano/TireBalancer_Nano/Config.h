@@ -52,9 +52,13 @@ const uint8_t PIN_HX_SCK[3]  = {3, 8, 12};
 // the other way. Z is worked out from those. Change at run time with
 // TopAxisX/TopAxisY/BaseAxisX/BaseAxisY (saved), see docs/Setup.md.
 #define TOP_AXIS_X        2         // platform MPU: machine +X = sensor +Y
-#define TOP_AXIS_Y        1         //               machine +Y = sensor +X (MPU upside down)
-#define BASE_AXIS_X      -2         // frame MPU:    machine +X = sensor -Y
-#define BASE_AXIS_Y       1         //               machine +Y = sensor +X (MPU face up)
+#define TOP_AXIS_Y        1         //               machine +Y = sensor +X
+#define BASE_AXIS_X       2         // frame MPU:    machine +X = sensor +Y
+#define BASE_AXIS_Y       1         //               machine +Y = sensor +X
+// Measured by lifting the frame with the actuators off (2026-11-14): lifting
+// the 270 deg side lowered both pitches, lifting the 0 deg side raised both
+// rolls. (BASE_AXIS_X was -2 before, inferred from the Z readings - wrong:
+// the Z sign is not a reliable check on these boards, see docs/Setup.md.)
 
 // Gyro (platform MPU, +-250 deg/s). Zero offset is tracked while both actuators rest.
 #define GYRO_COUNTS_DPS   131.0f
