@@ -1210,7 +1210,7 @@ static void setupExtraWidgets() {
   lv_obj_t *reachBtn = lv_btn_create(ui_Debug_Tab);
   lv_obj_set_size(reachBtn, 140, 45);
   lv_obj_set_align(reachBtn, LV_ALIGN_CENTER);
-  lv_obj_set_y(reachBtn, lv_pct(185));
+  lv_obj_set_y(reachBtn, lv_pct(200));
   lv_obj_add_event_cb(reachBtn, reachButton_event_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *reachLbl = lv_label_create(reachBtn);
   lv_label_set_text(reachLbl, "Find Reach");
@@ -1220,7 +1220,7 @@ static void setupExtraWidgets() {
   lv_obj_t *restoreBtn = lv_btn_create(ui_Debug_Tab);
   lv_obj_set_size(restoreBtn, 220, 45);
   lv_obj_set_align(restoreBtn, LV_ALIGN_CENTER);
-  lv_obj_set_y(restoreBtn, lv_pct(215));
+  lv_obj_set_y(restoreBtn, lv_pct(230));
   lv_obj_set_style_bg_color(restoreBtn, lv_palette_main(LV_PALETTE_RED), 0);
   lv_obj_add_event_cb(restoreBtn, restoreButton_event_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *restoreLbl = lv_label_create(restoreBtn);
