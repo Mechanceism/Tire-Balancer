@@ -109,7 +109,7 @@ const uint8_t PIN_HX_SCK[3]  = {3, 8, 12};
 // ---------------------------------------------------------------- Types
 enum : uint8_t { ST_IDLE, ST_LEVELING, ST_SAMPLING, ST_JOG, ST_REACH };
 
-enum : uint8_t { JOB_NONE, JOB_TARE, JOB_BALANCE, JOB_CAL_A, JOB_CAL_B, JOB_CAL_C, JOB_WEIGH };
+enum : uint8_t { JOB_NONE, JOB_TARE, JOB_BALANCE, JOB_CAL_A, JOB_CAL_B, JOB_CAL_C, JOB_WEIGH, JOB_ZERO };
 
 enum : uint8_t { EV_NONE, EV_LEVEL_DONE, EV_TARE_DONE, EV_BALANCE_DONE, EV_ERROR };
 
@@ -119,7 +119,7 @@ enum : uint8_t {
 };
 
 // Everything in here survives power-off ("Save" command, EEPROM).
-#define SETTINGS_MAGIC 0x7B0A
+#define SETTINGS_MAGIC 0x7B0B
 struct Settings {
   uint16_t magic;
   float cal[3];        // load cell counts per kg (sign included) - set with CalA/CalB/CalC
@@ -144,4 +144,8 @@ struct Settings {
   // straight-line mix of the two sets for the measured weight.
   float loadRefKg;
   float kpLoad, kiLoad, kdLoad, minSpeedLoad;
+  // "Factory zero": raw load cell readings with the platform empty (arms on),
+  // set with SetZero. Level weighs against it, so Mass Comp works from power-on
+  // with or without a tire on. Not accurate enough for Balance - that needs Tare.
+  float zeroRaw[3];
 };

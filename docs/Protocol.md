@@ -41,7 +41,8 @@ streams). The screen ignores them.
 |---|---|
 | `Level` | Start leveling. Ends with `LevelCompleted` (Auto Stop on) or runs until cancelled (Auto Stop off). |
 | `LevelCancel` | Stop leveling. |
-| `Tare` | Zero the load cells (arms empty). Needed once after every power-up. Ends with `TareCompleted`. |
+| `Tare` | Zero the load cells (arms empty). Needed once after every power-up before `Balance` or `Cal`. Ends with `TareCompleted`. |
+| `SetZero` | Save the "factory zero": the empty-platform load cell readings `Level` uses to weigh the load for Mass Comp. Platform must be empty (arms on). Prints `# Zero saved`. Redo if the arms change. |
 | `FindReach` | **Moves the platform to all four actuator end-stop combinations**, measures how far it can tilt relative to the frame, saves it, then levels. About 45 s. Redo after any change to the frame, actuators or MPU mounting. |
 | `Balance` | Weigh, calculate, switch the laser on. Ends with `BalanceCompleted ...`. |
 | `BalanceCancel` | Abort a Tare / Balance / Cal that is still measuring. |
@@ -57,7 +58,7 @@ streams). The screen ignores them.
 | Command | Default | What it does |
 |---|---|---|
 | `AutoStopOn` / `AutoStopOff` | on | Off = keep hunting for level forever (demo mode). |
-| `MassCompOn` / `MassCompOff` | off (the screen turns it on) | Load compensation. `Level` first weighs the platform (~0.3 s) and uses leveling gains interpolated between the no-load set and the `*Load` set for that weight. Needs a `Tare`; without one the no-load gains are used. Prints `# Load <kg> kg f <factor>`. |
+| `MassCompOn` / `MassCompOff` | off (the screen turns it on) | Load compensation. `Level` first weighs the platform (~0.3 s) against the factory zero (`SetZero`) - no `Tare` needed, works with or without a tire on - and uses leveling gains interpolated between the no-load set and the `*Load` set for that weight. Prints `# Load <kg> kg f <factor>`. |
 | `TestMassOn` / `TestMassOff` | off | Add `TestMass` kg to every load cell (bench testing). |
 | `LaserOn` / `LaserOff` / `LaserToggle` | off | Laser + servo pointing at the last balance result. |
 | `ManualLaserOn` / `ManualLaserOff` | off | Point at `LaserAngle` instead of the result. |

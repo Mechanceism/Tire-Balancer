@@ -30,6 +30,11 @@ void settingsDefaults() {
   cfg.kiLoad       = 5;
   cfg.kdLoad       = 15;
   cfg.minSpeedLoad = 20;
+
+  // Factory zero: raw readings, empty platform with arms (2026-11-14). SetZero refreshes it.
+  cfg.zeroRaw[0]   = 623605;
+  cfg.zeroRaw[1]   = 15458;
+  cfg.zeroRaw[2]   = 92908;
   cfg.alpha       = 0.60;       // only used with the gyro off (Gyro0)
   cfg.levelTol    = 0.10;
   cfg.laserOffset = 79.5;       // this servo's zero is ~80 deg off (82 pointed 2-3 deg CCW, 2026-11-13)
@@ -76,6 +81,9 @@ void settingsPrint() {
   Serial.print(F(" Ki "));           Serial.print(cfg.kiLoad);
   Serial.print(F(" Kd "));           Serial.print(cfg.kdLoad);
   Serial.print(F(" MinSpeed "));     Serial.println(cfg.minSpeedLoad, 0);
+  Serial.print(F("# Zero "));        Serial.print(cfg.zeroRaw[0], 0);
+  Serial.print(' ');                 Serial.print(cfg.zeroRaw[1], 0);
+  Serial.print(' ');                 Serial.println(cfg.zeroRaw[2], 0);
   Serial.print(F("# Alpha "));       Serial.print(cfg.alpha);
   Serial.print(F(" LevelTol "));     Serial.println(cfg.levelTol);
   Serial.print(F("# Gyro "));        Serial.print(cfg.gyroMix);

@@ -221,9 +221,10 @@ void levelStart() {
   readBase();
   if (reachMargin < REACH_MARGIN_START) { eventError(ERR_BASE_TILT); return; }
 
-  // Mass Comp: weigh first (~0.3 s), then level with gains for that load.
-  // Without a Tare the load cells can't tell the load, so use the no-load gains.
-  if (massComp && tared) scaleJobStart(JOB_WEIGH, 0);
+  // Mass Comp: weigh first (~0.3 s) against the factory zero - no Tare needed,
+  // so it works from power-on with or without a tire - then level with gains
+  // for that load.
+  if (massComp) scaleJobStart(JOB_WEIGH, 0);
   else levelBegin(0);
 }
 

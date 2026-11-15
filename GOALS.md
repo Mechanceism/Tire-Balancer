@@ -80,7 +80,12 @@ Load compensation (2026-11-14, 4.80-12 trailer tire, 8.66 kg):
 - [x] Mass Comp now = Level weighs first (~0.3 s) and interpolates the gains
       linearly between the no-load and 8.66 kg sets (up to 2x 8.66 kg).
       Replaces the old drive multiplier.
-- [ ] Verify on the machine with the tire after a fresh Tare
+- [x] Level weighs against a saved "factory zero" (SetZero, empty platform),
+      not the Tare, so Mass Comp works from power-on with or without a tire.
+      Tare stays required (empty platform) for Balance. Checked without a
+      Tare, tire on: weighed 9.01 kg (Tare had said 8.66) using a factory
+      zero taken from earlier readings.
+- [ ] Run SetZero on the empty platform to refresh the factory zero
 
 Balance and laser (2026-11-13):
 - [x] Balance -> screen -> Ack -> laser through the relay; angle and mass

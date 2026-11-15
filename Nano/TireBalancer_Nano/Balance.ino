@@ -34,8 +34,9 @@ static void updateWeights() {
 void scaleJobStart(uint8_t newJob, float massKg) {
   if (state == ST_SAMPLING && job == newJob) return;     // already at it
   if (state != ST_IDLE) { eventError(ERR_BUSY); return; }
-  // The zero point is not stored: Tare (empty arms) once after every power-up.
-  if (newJob != JOB_TARE && !tared) { eventError(ERR_NO_TARE); return; }
+  // Balance and calibration need the accurate zero point, which is not stored:
+  // Tare (empty arms) once after every power-up. Weigh/SetZero don't need it.
+  if (newJob >= JOB_BALANCE && newJob <= JOB_CAL_C && !tared) { eventError(ERR_NO_TARE); return; }
   for (uint8_t i = 0; i < 3; i++) {
     if (hx[i].is_ready()) hx[i].read();      // throw away a reading that has been waiting
     fresh[i]  = false;
@@ -60,10 +61,17 @@ static void jobFinish() {
   job   = JOB_NONE;
   state = ST_IDLE;
 
-  if (done == JOB_WEIGH) {          // quick weigh before leveling (must come before the Cal test)
+  // (WEIGH and ZERO must be handled before the Cal test below)
+  if (done == JOB_WEIGH) {          // quick weigh before leveling, against the factory zero
     float kg = 0;
-    for (uint8_t i = 0; i < 3; i++) kg += (avg[i] - tareRaw[i]) / cfg.cal[i];
+    for (uint8_t i = 0; i < 3; i++) kg += (avg[i] - cfg.zeroRaw[i]) / cfg.cal[i];
     levelBegin(kg);
+    return;
+  }
+  if (done == JOB_ZERO) {           // SetZero: empty platform, arms on
+    memcpy(cfg.zeroRaw, avg, sizeof(avg));
+    settingsSave();
+    Serial.println(F("# Zero saved"));
     return;
   }
 

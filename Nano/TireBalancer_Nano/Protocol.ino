@@ -129,6 +129,7 @@ static bool runCommand(const char *key, bool hasVal, float v) {
   else if (IS("FindReach"))    { reachStart(); }     // measure the end stops (moves to all 4!)
   else if (IS("LevelCancel"))  { levelCancel(); }
   else if (IS("Tare"))         { scaleJobStart(JOB_TARE, 0); }
+  else if (IS("SetZero"))      { scaleJobStart(JOB_ZERO, 0); }        // factory zero: empty platform
   else if (IS("Balance"))      { scaleJobStart(JOB_BALANCE, 0); }
   else if (IS("BalanceCancel")) { scaleJobCancel(); }
   else if (IS("CalA"))         { scaleJobStart(JOB_CAL_A, v); }      // CalA<kg on arm A>
