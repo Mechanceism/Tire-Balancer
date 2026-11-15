@@ -124,6 +124,17 @@ bool     reachRunning = false;    // the leveling page is showing a FindReach ru
 uint32_t waitDeadline = 0;        // 0 = wait forever (leveling with Auto Stop off)
 uint32_t laserAutoOffAt = 0;      // when to switch the laser off after a Balance (0 = not planned)
 
+// Load cell calibration (see "load cell calibration" below)
+uint8_t  calJob      = 0;            // running on the Nano: 0 nothing, 1 Tare, 2..4 Cal A..C
+bool     calTared    = false;        // tared in this calibration
+uint8_t  calDoneMask = 0;            // load cells calibrated (bit 0 = A)
+float    calNew[3]   = {0, 0, 0};
+float    calOld[3]   = {0, 0, 0};    // before this calibration (from Status), if known
+bool     calHaveOld  = false;
+bool     calTouch    = false;        // the touch screen flow is running
+uint32_t calDeadline = 0;
+uint32_t calSeq      = 0;            // changes with every step, for the web page
+
 bool     linkUp       = false;
 uint32_t lastHeardMs  = 0;
 uint32_t lastPingMs   = 0;
@@ -145,6 +156,9 @@ uint32_t lastSliderSendMs = 0;
 lv_obj_t *statusLabel   = NULL;   // bottom-left corner, on every screen
 lv_obj_t *messageBox    = NULL;
 lv_obj_t *restoreBtn   = NULL;   // Debug tab: Restore Factory Defaults (the WiFi info goes under it)
+lv_obj_t *calPad       = NULL;   // load cell calibration: full-screen number pad
+lv_obj_t *calPadHead   = NULL;   //   its title and the value typed so far
+char      calPadText[8] = "";
 lv_obj_t *weightPosSw  = NULL;   // Tire Info: Clip-on (off) / Stick-on (on)
 lv_obj_t *tireFmtDd    = NULL;   // Tire Info: size format
 lv_obj_t *tireSizeLbl  = NULL;   // Tire Info: the size entered (tap to edit)
@@ -662,6 +676,7 @@ static void handleNanoLine(char *line) {
 
   lastHeardMs = millis();
   webNanoLine(line);                                 // picks up the Nano's version
+  calOnLine(line);                                   // load cell calibration results
   bool wasUp = linkUp;
   if (!linkUp) {
     linkUp = true;
@@ -701,6 +716,7 @@ static void handleNanoLine(char *line) {
   }
   else if (!strncmp(line, "TareCompleted", 13)) {
     nanoSend("Ack");
+    calOnTare();
     if (waiting == WAIT_TARE) {
       waiting = WAIT_NONE;
       statusNote("Tare done");
@@ -724,6 +740,7 @@ static void handleNanoLine(char *line) {
   }
   else if (!strncmp(line, "Err ", 4)) {
     nanoSend("Ack");
+    calOnErr();
     waiting = WAIT_NONE;
     reachRunning = false;
     backToOptionMenu();
@@ -803,6 +820,11 @@ static void linkTick(uint32_t now) {
     nanoSendNow("Stop");
     backToOptionMenu();
     showMessage("No reply", "The Nano did not answer in time. Check the serial wires (see docs/Wiring.md).");
+  }
+
+  if (calJob && (int32_t)(now - calDeadline) >= 0) {
+    calStop();
+    showMessage("No reply", "The Nano did not finish the load cell measurement.");
   }
 
   if (laserAutoOffAt && (int32_t)(now - laserAutoOffAt) >= 0) {
@@ -923,6 +945,175 @@ bool doLaserSet90() {
   return true;
 }
 
+// ============================================================ load cell calibration
+// Shared by the touch screen (number pad between steps) and the web page.
+// The Nano does the measuring, unchanged: Tare (arms empty), then CalA/B/C<kg>
+// each measure one arm with a known mass on it and save that load cell's
+// factor at once, printing "# CalA 100129.3". So every load cell is saved as
+// soon as it is done; cancelling stops the rest.
+#define CAL_TIMEOUT_MS 8000          // Tare / CalX take ~1 s (10 readings)
+static const char CAL_NAME[3] = {'A', 'B', 'C'};
+static const int  CAL_DEG[3]  = {210, 90, 330};
+
+void calStart(bool touch) {
+  calJob = 0;
+  calTared = false;
+  calDoneMask = 0;
+  calTouch = touch;
+  calHaveOld = webOldCal(calOld);
+  calSeq++;
+}
+void calTare() {
+  calJob = 1;
+  calDeadline = millis() + CAL_TIMEOUT_MS;
+  nanoSend("Tare");
+  calSeq++;
+  if (calTouch) {
+    lv_label_set_text(ui_LevelLoadingLabel, "Taring (arms empty)...");
+    requestScreen(ui_LevelLoadingMenu);
+  }
+}
+// kg on load cell i (0 = A). False if not tared yet or a silly mass.
+bool calCell(uint8_t i, float kg) {
+  if (i > 2 || !calTared || calJob || !(kg > 0.05f && kg < 100)) return false;
+  calJob = 2 + i;
+  calDeadline = millis() + CAL_TIMEOUT_MS;
+  nanoSend("Cal%c%.3f", CAL_NAME[i], kg);
+  calSeq++;
+  if (calTouch) {
+    char t[40];
+    snprintf(t, sizeof(t), "Calibrating Load Cell %c...", CAL_NAME[i]);
+    lv_label_set_text(ui_LevelLoadingLabel, t);
+    requestScreen(ui_LevelLoadingMenu);
+  }
+  return true;
+}
+// "A: 100129.3 (was 100100.0, +0.03%)" for each load cell done
+static void calSummary(char *out, size_t len) {
+  out[0] = 0;
+  size_t n = 0;
+  for (uint8_t i = 0; i < 3; i++) {
+    if (!(calDoneMask & (1 << i))) continue;
+    if (calHaveOld && calOld[i] != 0)
+      n += snprintf(out + n, len - n, "%c: %.1f (was %.1f, %+.2f%%)\n", CAL_NAME[i], calNew[i], calOld[i],
+                    (calNew[i] / calOld[i] - 1) * 100);
+    else
+      n += snprintf(out + n, len - n, "%c: %.1f\n", CAL_NAME[i], calNew[i]);
+    if (n >= len) break;
+  }
+  if (!out[0]) snprintf(out, len, "No load cell was changed.");
+}
+// Stop: anything still measuring is cancelled, nothing more is calibrated.
+void calStop() {
+  if (calJob) nanoSendNow("BalanceCancel");
+  bool touch = calTouch;
+  calJob = 0;
+  calTouch = false;
+  calSeq++;
+  if (calPad) lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
+  if (calDoneMask) webCalChanged();             // read the new factors back
+  if (touch) {
+    backToOptionMenu();
+    char s[160];
+    calSummary(s, sizeof(s));
+    showMessage("Calibration stopped", s);
+  }
+}
+
+static void calPadShow(const char *note) {
+  uint8_t i = 0;
+  while (i < 3 && (calDoneMask & (1 << i))) i++;      // the next load cell not done yet
+  if (i > 2) i = 2;
+  char b[160];
+  snprintf(b, sizeof(b), "Add weight to Load Cell %c (%d deg)\nWeight amount (%s): #2196f3 %s#\n%s",
+           CAL_NAME[i], CAL_DEG[i], totalWeightInLbs() ? "lbs" : "kg",
+           calPadText[0] ? calPadText : "_", note ? note : "Put the weight on that arm only, then Enter.");
+  lv_label_set_text(calPadHead, b);
+}
+static void calPadOpen() {
+  calPadText[0] = 0;
+  calPadShow(NULL);
+  lv_obj_clear_flag(calPad, LV_OBJ_FLAG_HIDDEN);
+}
+static void calPadKey_event_cb(lv_event_t * e) {
+  lv_obj_t *m = lv_event_get_target(e);
+  const char *k = lv_btnmatrix_get_btn_text(m, lv_btnmatrix_get_selected_btn(m));
+  if (!k) return;
+  size_t len = strlen(calPadText);
+  if (!strcmp(k, "Cancel")) { calStop(); return; }
+  if (!strcmp(k, LV_SYMBOL_BACKSPACE)) { if (len) calPadText[len - 1] = 0; }
+  else if (!strcmp(k, "Enter")) {
+    float v = atof(calPadText);
+    float kg = totalWeightInLbs() ? v / 2.20462f : v;
+    uint8_t i = 0;
+    while (i < 3 && (calDoneMask & (1 << i))) i++;
+    if (!calCell(i, kg)) { calPadShow("Type the weight first (more than 0.05 kg)."); return; }
+    lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  else if (len < sizeof(calPadText) - 1 && !(k[0] == '.' && strchr(calPadText, '.'))) {
+    calPadText[len] = k[0];
+    calPadText[len + 1] = 0;
+  }
+  calPadShow(NULL);
+}
+
+// Called from handleNanoLine
+static void calOnTare() {
+  if (calJob != 1) return;
+  calJob = 0;
+  calTared = true;
+  calSeq++;
+  if (calTouch) calPadOpen();
+}
+static void calOnLine(const char *line) {             // "# CalA 100129.3" (the echo "# CalA 5.00" has 2 decimals)
+  if (calJob < 2 || strncmp(line, "# Cal", 5)) return;
+  uint8_t i = calJob - 2;
+  if (line[5] != CAL_NAME[i] || line[6] != ' ') return;
+  const char *dot = strchr(line + 7, '.');
+  if (!dot || strlen(dot + 1) != 1) return;           // the result has exactly one decimal
+  calNew[i] = atof(line + 7);
+  calDoneMask |= 1 << i;
+  calJob = 0;
+  calSeq++;
+  if (!calTouch) return;
+  if (calDoneMask != 7) { calPadOpen(); return; }
+  calTouch = false;                                   // all three done
+  webCalChanged();
+  backToOptionMenu();
+  char s[160];
+  calSummary(s, sizeof(s));
+  showMessage("Load cells calibrated", s);
+}
+static void calOnErr() {                              // the Err itself is shown as usual
+  if (!calJob && !calTouch) return;
+  calJob = 0;
+  calTouch = false;
+  calSeq++;
+  if (calPad) lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
+  if (calDoneMask) webCalChanged();
+}
+
+// Debug tab button: confirm, then Tare
+static void calConfirm_event_cb(lv_event_t * e) {
+  lv_obj_t *mb = lv_event_get_current_target(e);
+  const char *t = lv_msgbox_get_active_btn_text(mb);
+  bool start = t && !strcmp(t, "Start");
+  lv_msgbox_close_async(mb);
+  if (!start) return;
+  calStart(true);
+  calTare();
+}
+static void calButton_event_cb(lv_event_t * e) {
+  static const char *btns[] = {"Start", "Cancel", ""};
+  lv_obj_t *mb = lv_msgbox_create(NULL, "Load Cell Calibration",
+                                  "Remove everything from the arms. The scale is\n"
+                                  "zeroed first, then each load cell is calibrated\n"
+                                  "with a known weight. Each one is saved when done.", btns, false);
+  lv_obj_center(mb);
+  lv_obj_add_event_cb(mb, calConfirm_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+}
+
 // ============================================================ UI event handlers
 // Buttons
 void LevelButton_event_handler(lv_event_t * e) {
@@ -931,6 +1122,7 @@ void LevelButton_event_handler(lv_event_t * e) {
 }
 void LevelCancelButton_event_handler(lv_event_t * e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+  if (calTouch) { calStop(); return; }               // the loading page was showing a calibration step
   doLevelCancel();
 }
 
@@ -1299,11 +1491,45 @@ static void setupExtraWidgets() {
   lv_label_set_text(ui_PitchOffsetSliderLabel, "Pitch Trim (deg tenths)");
   lv_label_set_text(ui_RollOffsetSliderLabel, "Roll Trim (deg tenths)");
 
-  // Debug tab: Find Reach button, below the existing controls
+  // Debug tab: Load Cell Calibration, below the existing controls
+  lv_obj_t *calBtn = lv_btn_create(ui_Debug_Tab);
+  lv_obj_set_size(calBtn, 220, 45);
+  lv_obj_set_align(calBtn, LV_ALIGN_CENTER);
+  lv_obj_set_y(calBtn, lv_pct(200));
+  lv_obj_add_event_cb(calBtn, calButton_event_cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_t *calLbl = lv_label_create(calBtn);
+  lv_label_set_text(calLbl, "Load Cell Calibration");
+  lv_obj_center(calLbl);
+
+  // Load cell calibration number pad (full screen, hidden until needed)
+  static const char *calMap[] = {"1", "2", "3", LV_SYMBOL_BACKSPACE, "\n",
+                                 "4", "5", "6", ".", "\n",
+                                 "7", "8", "9", "Cancel", "\n",
+                                 "0", "Enter", ""};
+  calPad = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(calPad, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_style_pad_all(calPad, 4, 0);
+  lv_obj_set_style_radius(calPad, 0, 0);
+  lv_obj_clear_flag(calPad, LV_OBJ_FLAG_SCROLLABLE);
+  calPadHead = lv_label_create(calPad);
+  lv_label_set_recolor(calPadHead, true);
+  lv_obj_set_style_text_align(calPadHead, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_width(calPadHead, LV_PCT(100));
+  lv_obj_align(calPadHead, LV_ALIGN_TOP_MID, 0, 0);
+  lv_obj_t *cpad = lv_btnmatrix_create(calPad);
+  lv_btnmatrix_set_map(cpad, calMap);
+  lv_btnmatrix_set_btn_width(cpad, 13, 3);                // "Enter" is three keys wide
+  lv_btnmatrix_set_btn_ctrl_all(cpad, LV_BTNMATRIX_CTRL_NO_REPEAT);
+  lv_obj_set_size(cpad, LV_PCT(100), 175);
+  lv_obj_align(cpad, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_add_event_cb(cpad, calPadKey_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+  lv_obj_add_flag(calPad, LV_OBJ_FLAG_HIDDEN);
+
+  // Debug tab: Find Reach button, under Load Cell Calibration
   lv_obj_t *reachBtn = lv_btn_create(ui_Debug_Tab);
   lv_obj_set_size(reachBtn, 140, 45);
   lv_obj_set_align(reachBtn, LV_ALIGN_CENTER);
-  lv_obj_set_y(reachBtn, lv_pct(200));
+  lv_obj_set_y(reachBtn, lv_pct(230));
   lv_obj_add_event_cb(reachBtn, reachButton_event_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *reachLbl = lv_label_create(reachBtn);
   lv_label_set_text(reachLbl, "Find Reach");
@@ -1313,7 +1539,7 @@ static void setupExtraWidgets() {
   restoreBtn = lv_btn_create(ui_Debug_Tab);
   lv_obj_set_size(restoreBtn, 220, 45);
   lv_obj_set_align(restoreBtn, LV_ALIGN_CENTER);
-  lv_obj_set_y(restoreBtn, lv_pct(230));
+  lv_obj_set_y(restoreBtn, lv_pct(260));
   lv_obj_set_style_bg_color(restoreBtn, lv_palette_main(LV_PALETTE_RED), 0);
   lv_obj_add_event_cb(restoreBtn, restoreButton_event_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *restoreLbl = lv_label_create(restoreBtn);

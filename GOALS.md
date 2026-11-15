@@ -50,8 +50,8 @@ ESP32 core's own WebServer (no extra libraries), page embedded in the program.
 - [x] Stage 3: Balance report on the web page (CSV, print / PDF) with the
   phone's date and time, the tire, the result, each arm's load and the
   platform's level captured right after the Balance. **To test on a phone.**
-- [ ] Stage 3: Load Cell Calibration on the touch screen and the web page
-  (design agreed, see the conversation of 2026-11-14 / CHANGELOG once built)
+- [x] Stage 3: Load Cell Calibration on the touch screen and the web page
+  (Tare, then A, B, C with a known weight; each saved when done). **To test.**
 - Decided against: an editable settings table (Info shows the settings; the
   console's command list edits them), a stored balance history (the report is
   saved on the phone instead), a QR code (the WiFi is open).

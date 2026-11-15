@@ -165,6 +165,17 @@ void webLinkUp() {
   if (!nanoVersion[0] || !statusLine[ST_REACH][0]) webAskStatus(true);
 }
 
+// The load cell factors from the last Status ("Cal 100129.3 97834.2 102888.3")
+bool webOldCal(float out[3]) {
+  return statusLine[0][0] && sscanf(statusLine[0] + 4, "%f %f %f", &out[0], &out[1], &out[2]) == 3;
+}
+
+// Load cells were calibrated: read the new factors back.
+void webCalChanged() {
+  statusLine[0][0] = 0;
+  webAskStatus(true);
+}
+
 // FindReach has saved a new reach area: read it again.
 void webReachChanged() {
   statusLine[ST_REACH][0] = 0;
@@ -289,6 +300,17 @@ static void webState() {
   jInt(o, "rollTrim", lv_slider_get_value(ui_RollOffsetSlider));
   jInt(o, "minSpeed", enteredMin);
   jInt(o, "maxSpeed", enteredMax);
+
+  // load cell calibration
+  jKey(o, "cal");
+  o += "{\"seq\":"; o += calSeq;
+  o += ",\"job\":"; o += calJob;
+  o += ",\"tared\":"; o += calTared ? 1 : 0;
+  o += ",\"done\":"; o += calDoneMask;
+  o += ",\"touch\":"; o += calTouch ? 1 : 0;
+  o += ",\"new\":["; for (uint8_t i = 0; i < 3; i++) { if (i) o += ','; o += String(calNew[i], 1); } o += ']';
+  if (calHaveOld) { o += ",\"old\":["; for (uint8_t i = 0; i < 3; i++) { if (i) o += ','; o += String(calOld[i], 1); } o += ']'; }
+  o += '}';
 
   // pop-ups
   jKey(o, "note"); o += '['; o += noteId; o += ','; jStr(o, noteText); o += ']';
@@ -431,6 +453,27 @@ static void webDo() {
     doSpeedEnter();
   }
   else if (a == "restore")       { doRestoreDefaults(); }
+
+  // ---- Load cell calibration (no motion: no safety tick needed)
+  else if (a == "calOpen") {
+    if (calTouch) { webReply(false, "A calibration is running on the touch screen.", ""); return; }
+    if (!linkUp)  { webReply(false, "No link to the Nano.", ""); return; }
+    calStart(false);
+  }
+  else if (a == "calTare") {
+    if (calTouch || calJob) { webReply(false, "Still measuring - wait a moment.", ""); return; }
+    calTare();
+  }
+  else if (a == "calCell") {
+    if (calTouch) { webReply(false, "A calibration is running on the touch screen.", ""); return; }
+    if (!calTared) { webReply(false, "Press Tare first, with the arms empty.", ""); return; }
+    if (!calCell(web.arg("cell").toInt(), vs.toFloat())) { webReply(false, "Type the weight first (more than 0.05 kg), and wait for any measurement to finish.", ""); return; }
+  }
+  else if (a == "calCancel")     { if (!calTouch) calStop(); }
+  else if (a == "calDone") {
+    if (calJob) { webReply(false, "Still measuring - wait a moment.", ""); return; }
+    if (calDoneMask) webCalChanged();
+  }
 
   // ---- Console
   else if (a == "cmd") {

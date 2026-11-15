@@ -41,6 +41,14 @@
   gravity, and each arm's load and the platform's level, which the screen
   captures by switching the scale and level streams on for a moment right
   after every Balance. The wheel drawing shows those arm loads too.
+- **Load Cell Calibration** (Debug tab, above Find Reach, on the touch screen
+  and the web page): Tare with empty arms, then each load cell with a known
+  weight typed in kg or lbs (follows the total weight unit). Touch screen: the
+  number pad asks for A, B, C in turn, with the leveling page showing
+  "Calibrating Load Cell A...". Web: a Tare row and a row per load cell with
+  Calibrate, then Cancel / Done. The new factors and their change are shown.
+  Uses the Nano's Tare and CalA/B/C unchanged, so each load cell is saved as
+  soon as it is done.
 - Needs the **Huge APP** partition scheme (program ~1.3 MB);
   `Screen/ui/partitions.csv` sets the layout. Saved settings carry over.
 

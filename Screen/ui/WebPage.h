@@ -128,6 +128,13 @@ svg text{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .chart canvas{width:100%;height:170px;display:block;touch-action:pan-y}
 .tip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.15);display:none;white-space:nowrap;z-index:2}
 .tip i{display:inline-block;width:10px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+/* load cell calibration */
+.dlg.cal{text-align:left;max-height:92vh;overflow:auto}
+.calrow{display:grid;grid-template-columns:1fr 84px auto;gap:8px;align-items:center;padding:12px 0;border-top:1px solid var(--line);margin-top:10px}
+.calrow>div:first-child{grid-column:1}.calrow small{display:block;color:var(--muted);font-size:13px}
+.calrow:not([data-i]) button{grid-column:2/4}
+.calrow input{font:inherit;font-size:18px;padding:8px;border:2px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);width:100%;min-height:44px}
+.calrow small.okc{color:var(--ok)}
 /* balance report: only #print is printed, always black on white */
 #print{display:none}
 @media print{
@@ -280,7 +287,8 @@ svg text{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
   </div>
   <div class="card">
     <h2>Machine</h2>
-    <button class="btn" id="reachBtn" data-g style="width:100%">Find Reach (platform limits)</button>
+    <button class="btn" id="calBtn" style="width:100%">Load Cell Calibration</button>
+    <button class="btn" id="reachBtn" data-g style="width:100%;margin-top:10px">Find Reach (platform limits)</button>
     <button class="btn danger" id="restore" style="width:100%;margin-top:10px">Restore Factory Defaults</button>
   </div>
 </section>
@@ -313,6 +321,15 @@ svg text{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 </main>
 
 <div class="overlay" id="busy"><div class="dlg"><div class="spin"></div><h3 id="busyText">Working...</h3><div class="row"><button class="btn danger" id="busyCancel">Cancel</button></div></div></div>
+<div class="overlay" id="calDlg"><div class="dlg cal">
+  <h3>Load Cell Calibration</h3>
+  <p class="muted small" style="margin:0">Use a known weight, on one arm at a time. Each load cell is saved as soon as it is calibrated.</p>
+  <div class="calrow"><div><b>Arms empty</b><small id="calTareSt"></small></div><button class="btn" id="calTare">Tare</button></div>
+  <div class="calrow" data-i="0"><div><b>Load cell A (210&deg;)</b><small class="st"></small></div><input type="text" inputmode="decimal" autocomplete="off"><button class="btn primary">Calibrate</button></div>
+  <div class="calrow" data-i="1"><div><b>Load cell B (90&deg;)</b><small class="st"></small></div><input type="text" inputmode="decimal" autocomplete="off"><button class="btn primary">Calibrate</button></div>
+  <div class="calrow" data-i="2"><div><b>Load cell C (330&deg;)</b><small class="st"></small></div><input type="text" inputmode="decimal" autocomplete="off"><button class="btn primary">Calibrate</button></div>
+  <div class="row" style="justify-content:space-between;margin-top:14px"><button class="btn" id="calCancel">Cancel</button><button class="btn primary" id="calDone">Done</button></div>
+</div></div>
 <div class="overlay" id="dlg"><div class="dlg"><h3 id="dlgTitle"></h3><div id="dlgText"></div><div class="row" id="dlgBtns"></div></div></div>
 <div id="toast"></div>
 <div id="print"></div>
@@ -414,6 +431,34 @@ $('#reachBtn').onclick=()=>dialog('Find platform limits','The platform tilts up 
   [['Start',()=>act('reach'),'primary'],['Cancel']]);
 $('#restore').onclick=()=>dialog('Restore factory defaults','Put the Debug settings, units and Clip/Stick-on back to the factory values? Calibration and Recents are kept.',
   [['Restore',()=>act('restore'),'danger'],['Cancel']]);
+// ---------- load cell calibration (Tare, then A, B, C; each saved by the Nano when done)
+let calOpen=false;
+function closeCal(){calOpen=false;$('#calDlg').classList.remove('show')}
+$('#calBtn').onclick=async()=>{const j=await act('calOpen');if(!j.ok)return;
+  $$('#calDlg input').forEach(i=>i.value='');calOpen=true;$('#calDlg').classList.add('show');drawCal()};
+$('#calTare').onclick=()=>act('calTare');
+$$('#calDlg .calrow[data-i]').forEach(r=>{const i=+r.dataset.i,inp=r.querySelector('input');
+  const go=()=>{const v=parseFloat(inp.value.replace(',','.'));if(!(v>0)){inp.focus();toast('Type the weight on this arm first');return}
+    act('calCell',(S&&S.lbs?v/2.20462:v).toFixed(3),{cell:i})};
+  r.querySelector('button').onclick=go;inp.onkeydown=e=>{if(e.key=='Enter')go()}});
+$('#calCancel').onclick=()=>{act('calCancel');closeCal()};
+$('#calDone').onclick=async()=>{const j=await act('calDone');if(j.ok)closeCal()};
+function drawCal(){
+  if(!calOpen||!S)return;
+  const c=S.cal, unit=S.lbs?'lbs':'kg';
+  const t=$('#calTareSt');t.textContent=c.job==1?'Taring...':c.tared?'✓ Tared':'Remove everything from the arms, then Tare.';t.className=c.tared&&c.job!=1?'okc':'';
+  $('#calTare').disabled=!!c.job||c.touch;
+  $$('#calDlg .calrow[data-i]').forEach(r=>{const i=+r.dataset.i,st=r.querySelector('.st'),done=c.done&(1<<i);
+    r.querySelector('input').placeholder=unit;
+    r.querySelector('button').disabled=!c.tared||!!c.job||c.touch;
+    let s,ok=false;
+    if(c.job==2+i)s='Measuring... keep everything still.';
+    else if(done){ok=true;s='✓ Saved: '+fmt(c.new[i],1)+(c.old&&c.old[i]?' (was '+fmt(c.old[i],1)+', '+sgn((c.new[i]/c.old[i]-1)*100,2)+'%)':'')}
+    else s=c.tared?'Put the weight on this arm only, type it, Calibrate.':'Tare first.';
+    st.textContent=s;st.className='st'+(ok?' okc':'')});
+  $('#calDone').disabled=!!c.job;
+}
+
 $('#busyCancel').onclick=()=>{const b=S&&S.busy;act(b=='balance'?'balanceCancel':'levelCancel')};
 
 // ---------- sliders
@@ -981,7 +1026,7 @@ function render(j){
     LOG.push(...added);if(LOG.length>LOG_MAX)LOG.splice(0,LOG.length-LOG_MAX);drawLog(false,added)}
   logSeq=j.seq;
   snapResult(j);
-  drawLive();drawWheel();drawReport();
+  drawLive();drawWheel();drawReport();drawCal();
 
   // info
   table('#infoLink',[['State',j.quiet?'<span class="badc">Paused: noise on RX</span>':j.link?'<span class="okc">Nano OK</span>':'<span class="badc">No link</span>'],
