@@ -1,0 +1,25 @@
+# Arduino / arduino-cli build output
+build/
+*.hex
+*.elf
+*.bin
+*.map
+
+# Large local firmware image (see docs/firmware-backup/README.md)
+docs/firmware-backup/*.bin
+
+# SquareLine Studio working files
+Screen/squareline/backup/
+Screen/squareline/cache/
+Screen/squareline/autosave/
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ...except the firmware read back from the boards
+!docs/firmware-backup/*.hex
