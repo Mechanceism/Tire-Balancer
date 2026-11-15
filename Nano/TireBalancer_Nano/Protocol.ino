@@ -205,6 +205,11 @@ static bool runCommand(const char *key, bool hasVal, float v) {
 
   // ---- scales
   else if (IS("TestMass"))    { cfg.testMass = v; }
+
+  // ---- laser: "the laser now points at the real <v> degrees" (e.g. LaserSet90).
+  // Shifts the offset so the current manual angle becomes v, and saves it.
+  else if (IS("LaserSet"))    { cfg.laserOffset = fmod(cfg.laserOffset + manualAngle - v + 720, 360);
+                                manualAngle = v; laserApply(); settingsSave(); }
   else return false;
 
   confirm(key, hasVal, v);

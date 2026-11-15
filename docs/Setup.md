@@ -199,8 +199,11 @@ Keep each command line under 48 characters (`# ? line too long` otherwise).
 
 ## Other one-off calibrations
 
-- **Laser zero**: `ManualLaserOn`, `LaserAngle0`, then adjust `LaserOffset<n>`
-  until the dot sits at 0° (to the right). `Save`.
+- **Laser direction**: on the Debug tab switch **Manual Laser** on, step the
+  angle with **-** / **+** until the dot points exactly at the 90° side (the
+  far side, straight away from the screen), then press **Set 90**. The Nano
+  shifts and saves its `LaserOffset` so that angle now counts as 90°
+  (command: `LaserSet90`).
 - **Frame MPU offsets**: run `Tools/MPU6050_Calibrate` and copy the numbers into
   `levelInit()` in `Level.ino`.
 - **Balance weight radius**: `CLIP_ON_OFFSET_MM` and `STICK_ON_OFFSET_MM` at the

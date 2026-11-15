@@ -1040,6 +1040,22 @@ static void restoreButton_event_cb(lv_event_t * e) {
   lv_obj_add_event_cb(mb, restoreConfirm_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 }
 
+// ---- Debug tab: laser angle -/+ (1 deg steps) and "Set 90"
+static void laserStep_event_cb(lv_event_t * e) {
+  int step = (int)(intptr_t)lv_event_get_user_data(e);
+  int v = constrain((int)lv_slider_get_value(ui_ManualLaserAngleSlider) + step, 0, 360);
+  lv_slider_set_value(ui_ManualLaserAngleSlider, v, LV_ANIM_OFF);
+  lv_event_send(ui_ManualLaserAngleSlider, LV_EVENT_VALUE_CHANGED, NULL);   // label + send to the Nano
+}
+// The laser is pointing at the real 90 deg (the far side): make the current
+// manual angle count as 90. The Nano adjusts and saves its LaserOffset.
+static void laserSet90_event_cb(lv_event_t * e) {
+  if (!isChecked(ui_ManualLaserSwitch)) { statusNote("Turn Manual Laser on first"); return; }
+  nanoSend("LaserSet90");
+  setSlider(ui_ManualLaserAngleSlider, ui_ManualLaserAngleValueLabel, 90);
+  statusNote("Laser 90 deg set");
+}
+
 // ---- Tire Info: Recents - the last 5 different sizes entered, newest first
 #define RECENT_N 5
 static char      recents[RECENT_N][28];   // "<format>|<size>", e.g. "1|4.80-12"
@@ -1210,6 +1226,60 @@ static void setupExtraWidgets() {
   lv_obj_t *restoreLbl = lv_label_create(restoreBtn);
   lv_label_set_text(restoreLbl, "Restore Factory Defaults");
   lv_obj_center(restoreLbl);
+
+  // Debug tab, top re-laid out for laser calibration:
+  //   [Manual Laser]  [Set 90]
+  //   Laser Angle (deg)
+  //   [-]  ====slider====  value  [+]
+  // Everything else on the tab moves down to make room.
+  {
+    lv_obj_update_layout(ui_Debug_Tab);
+    lv_coord_t H = lv_obj_get_content_height(ui_Debug_Tab);
+    const lv_coord_t SHIFT = 60;
+    lv_obj_t *laserObjs[] = {ui_ManualLaserSwitch, ui_ManualLaserAngleSlider,
+                             ui_ManualLaserAngleLabel, ui_ManualLaserAngleValueLabel};
+    uint32_t n = lv_obj_get_child_cnt(ui_Debug_Tab);
+    for (uint32_t i = 0; i < n; i++) {
+      lv_obj_t *c = lv_obj_get_child(ui_Debug_Tab, i);
+      bool isLaser = false;
+      for (lv_obj_t *o : laserObjs) if (o == c) isLaser = true;
+      if (isLaser) continue;
+      lv_coord_t y = lv_obj_get_style_y(c, LV_PART_MAIN);
+      if (LV_COORD_IS_PCT(y)) y = (lv_coord_t)((int32_t)LV_COORD_GET_PCT(y) * H / 100);
+      lv_obj_set_y(c, y + SHIFT);
+    }
+    lv_coord_t top = -H / 2;                         // CENTER-aligned offsets from the tab middle
+
+    lv_obj_set_align(ui_ManualLaserSwitch, LV_ALIGN_CENTER);
+    lv_obj_set_pos(ui_ManualLaserSwitch, -60, top + 24);
+    lv_obj_t *set90 = lv_btn_create(ui_Debug_Tab);
+    lv_obj_set_size(set90, 90, 40);
+    lv_obj_set_align(set90, LV_ALIGN_CENTER);
+    lv_obj_set_pos(set90, 60, top + 24);
+    lv_obj_add_event_cb(set90, laserSet90_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *s90l = lv_label_create(set90);
+    lv_label_set_text(s90l, "Set 90");
+    lv_obj_center(s90l);
+
+    lv_obj_set_align(ui_ManualLaserAngleLabel, LV_ALIGN_CENTER);
+    lv_obj_set_pos(ui_ManualLaserAngleLabel, 0, top + 58);
+
+    lv_obj_set_align(ui_ManualLaserAngleSlider, LV_ALIGN_CENTER);
+    lv_obj_set_width(ui_ManualLaserAngleSlider, 150);
+    lv_obj_set_pos(ui_ManualLaserAngleSlider, -15, top + 90);
+    lv_obj_set_align(ui_ManualLaserAngleValueLabel, LV_ALIGN_CENTER);
+    lv_obj_set_pos(ui_ManualLaserAngleValueLabel, 81, top + 90);
+    for (int k = 0; k < 2; k++) {
+      lv_obj_t *b = lv_btn_create(ui_Debug_Tab);
+      lv_obj_set_size(b, 40, 40);
+      lv_obj_set_align(b, LV_ALIGN_CENTER);
+      lv_obj_set_pos(b, k ? 120 : -135, top + 90);
+      lv_obj_add_event_cb(b, laserStep_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)(k ? 1 : -1));
+      lv_obj_t *bl = lv_label_create(b);
+      lv_label_set_text(bl, k ? "+" : "-");
+      lv_obj_center(bl);
+    }
+  }
 
   // Tire Info tab: Recents, below the size controls (the tab scrolls)
   lv_obj_t *rl = lv_label_create(ui_Tire_Info_Tab);

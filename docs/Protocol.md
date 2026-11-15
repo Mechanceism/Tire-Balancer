@@ -89,6 +89,7 @@ streams). The screen ignores them.
 | `PitchTrim<n>` / `RollTrim<n>` | deg | no | Fine adjustment from the screen sliders, added to the offset. |
 | `LaserOffset<n>` | deg | yes | Servo zero vs. platform zero. |
 | `LaserAngle<n>` | deg | no | Target in manual laser mode. |
+| `LaserSet<n>` | deg | yes (saves) | "The laser now points at the real n degrees": shifts `LaserOffset` so the current manual angle becomes n. The screen's **Set 90** sends `LaserSet90`. |
 | `TestMass<n>` | kg | yes | Amount added per load cell while TestMass is on. |
 | `CalA<n>` / `CalB<n>` / `CalC<n>` | kg | automatically | Calibrate one load cell with a known mass on that arm. See [Setup.md](Setup.md). |
 | `JogLeft<n>` / `JogRight<n>` | signed PWM | no | Commissioning: run actuator 1 (left, 150°) or 2 (right, 30°) for `JogTime`, then stop. Positive = up. Both can run at once. |
