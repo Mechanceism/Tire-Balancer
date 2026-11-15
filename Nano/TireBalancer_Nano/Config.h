@@ -72,7 +72,6 @@ const uint8_t PIN_HX_SCK[3]  = {3, 8, 12};
 #define SPIKE_TICKS       5         // ...unless it repeats this many ticks in a row (0.1 s)
 #define LEVEL_TIMEOUT_MS  120000UL  // give up (Auto Stop mode only)
 #define DEAD_TIME_MS      150       // both H-bridge inputs off this long before any restart
-#define MASS_COMP_FULL_KG 20.0f     // load at which Mass Comp doubles the drive
 #define JOG_MS            1000      // JogLeft / JogRight run one actuator this long
 
 // Actuator mixing. Platform top view, X to the right (0 deg), Y away from the
@@ -92,6 +91,8 @@ const uint8_t PIN_HX_SCK[3]  = {3, 8, 12};
 #define LC_C_SIN  (-0.5f)
 
 #define JOB_SAMPLES       10        // readings averaged for Tare / Balance / Cal (10 SPS -> 1 s)
+#define WEIGH_SAMPLES     3         // quick weigh before leveling (~0.3 s)
+#define MAX_LOAD_FACTOR   2.0f      // gain interpolation goes at most to 2x the reference load
 #define SCALE_TIMEOUT_MS  1500      // a load cell that stays silent this long is reported
 #define MIN_TOTAL_KG      1.0f      // below this there is no tire on the machine
 #define MIN_CAL_COUNTS    1000      // smallest raw change accepted by CalA/B/C
@@ -108,7 +109,7 @@ const uint8_t PIN_HX_SCK[3]  = {3, 8, 12};
 // ---------------------------------------------------------------- Types
 enum : uint8_t { ST_IDLE, ST_LEVELING, ST_SAMPLING, ST_JOG, ST_REACH };
 
-enum : uint8_t { JOB_NONE, JOB_TARE, JOB_BALANCE, JOB_CAL_A, JOB_CAL_B, JOB_CAL_C };
+enum : uint8_t { JOB_NONE, JOB_TARE, JOB_BALANCE, JOB_CAL_A, JOB_CAL_B, JOB_CAL_C, JOB_WEIGH };
 
 enum : uint8_t { EV_NONE, EV_LEVEL_DONE, EV_TARE_DONE, EV_BALANCE_DONE, EV_ERROR };
 
@@ -118,7 +119,7 @@ enum : uint8_t {
 };
 
 // Everything in here survives power-off ("Save" command, EEPROM).
-#define SETTINGS_MAGIC 0x7B09
+#define SETTINGS_MAGIC 0x7B0A
 struct Settings {
   uint16_t magic;
   float cal[3];        // load cell counts per kg (sign included) - set with CalA/CalB/CalC
@@ -138,4 +139,9 @@ struct Settings {
   int8_t topAxis[2];   // platform MPU mounting: sensor axis along machine +X, +Y
   int8_t baseAxis[2];  // frame MPU mounting
   float ramp;          // PWM per second the actuators may speed up by (0 = instant)
+  // Load compensation (Mass Comp): the leveling gains above are for an empty
+  // platform; these are for loadRefKg on it. Level weighs first and uses a
+  // straight-line mix of the two sets for the measured weight.
+  float loadRefKg;
+  float kpLoad, kiLoad, kdLoad, minSpeedLoad;
 };

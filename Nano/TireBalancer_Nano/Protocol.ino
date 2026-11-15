@@ -190,6 +190,11 @@ static bool runCommand(const char *key, bool hasVal, float v) {
   else if (IS("Kp"))          { cfg.kp = max(v, 0.0f); }
   else if (IS("Ki"))          { cfg.ki = max(v, 0.0f); }
   else if (IS("Kd"))          { cfg.kd = max(v, 0.0f); }
+  else if (IS("LoadRef"))     { cfg.loadRefKg = max(v, 0.0f); }       // kg the *Load gains are for
+  else if (IS("KpLoad"))      { cfg.kpLoad = max(v, 0.0f); }
+  else if (IS("KiLoad"))      { cfg.kiLoad = max(v, 0.0f); }
+  else if (IS("KdLoad"))      { cfg.kdLoad = max(v, 0.0f); }
+  else if (IS("MinSpeedLoad")) { cfg.minSpeedLoad = constrain(v, 0, 255); }
   else if (IS("Alpha"))       { cfg.alpha = constrain(v, 0.0f, 0.99f); }
   else if (IS("LevelTol"))    { cfg.levelTol = constrain(v, 0.02f, 5.0f); }
   else if (IS("PitchOffset")) { cfg.pitchOffset = v; }

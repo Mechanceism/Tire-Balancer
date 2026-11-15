@@ -21,6 +21,15 @@ void settingsDefaults() {
   cfg.kp          = 300;        // 300 overshot without the gyro; fine with it
   cfg.ki          = 5;
   cfg.kd          = 10;         // brakes the approach; 20 was too much
+
+  // Same, tuned with a 4.80-12 trailer tire on (8.66 kg, 2026-11-14). The load
+  // made little difference (actuators move at PWM 15 loaded); Kd 15 gave the
+  // least overshoot. Kp 400 settled worse, Ki 10 no better.
+  cfg.loadRefKg    = 8.66;
+  cfg.kpLoad       = 300;
+  cfg.kiLoad       = 5;
+  cfg.kdLoad       = 15;
+  cfg.minSpeedLoad = 20;
   cfg.alpha       = 0.60;       // only used with the gyro off (Gyro0)
   cfg.levelTol    = 0.10;
   cfg.laserOffset = 79.5;       // this servo's zero is ~80 deg off (82 pointed 2-3 deg CCW, 2026-11-13)
@@ -62,6 +71,11 @@ void settingsPrint() {
   Serial.print(F("# Kp "));          Serial.print(cfg.kp);
   Serial.print(F(" Ki "));           Serial.print(cfg.ki);
   Serial.print(F(" Kd "));           Serial.println(cfg.kd);
+  Serial.print(F("# At "));          Serial.print(cfg.loadRefKg);
+  Serial.print(F(" kg: Kp "));       Serial.print(cfg.kpLoad);
+  Serial.print(F(" Ki "));           Serial.print(cfg.kiLoad);
+  Serial.print(F(" Kd "));           Serial.print(cfg.kdLoad);
+  Serial.print(F(" MinSpeed "));     Serial.println(cfg.minSpeedLoad, 0);
   Serial.print(F("# Alpha "));       Serial.print(cfg.alpha);
   Serial.print(F(" LevelTol "));     Serial.println(cfg.levelTol);
   Serial.print(F("# Gyro "));        Serial.print(cfg.gyroMix);

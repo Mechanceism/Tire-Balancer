@@ -34,6 +34,9 @@ static float    biasSumX, biasSumY;    // first-time learning: average over a st
 static uint8_t  biasCount    = 0;
 
 static void toMachine(const int8_t ax[2], const int16_t s[3], int16_t m[3]);
+
+// Leveling gains in use, set for the measured load by levelBegin()
+static float kpNow, kiNow, kdNow, minNow;
 static uint8_t  spikeRun     = 0;
 static uint8_t  stableTicks  = 0;
 static uint8_t  staleTicks   = 0;
@@ -210,12 +213,34 @@ static void readBase() {
 // ------------------------------------------------------------ start / stop
 void levelStart() {
   if (state == ST_LEVELING) return;                 // already at it
+  if (state == ST_SAMPLING && job == JOB_WEIGH) return;   // already weighing for it
   if (state != ST_IDLE)             { eventError(ERR_BUSY);       return; }
   if (!mpuPresent(MPU_TOP_ADDR))    { eventError(ERR_MPU_TOP);    return; }
   if (!mpuPresent(MPU_BOTTOM_ADDR)) { eventError(ERR_MPU_BOTTOM); return; }
   if (!axesValid(cfg.topAxis) || !axesValid(cfg.baseAxis)) { eventError(ERR_AXES); return; }
   readBase();
   if (reachMargin < REACH_MARGIN_START) { eventError(ERR_BASE_TILT); return; }
+
+  // Mass Comp: weigh first (~0.3 s), then level with gains for that load.
+  // Without a Tare the load cells can't tell the load, so use the no-load gains.
+  if (massComp && tared) scaleJobStart(JOB_WEIGH, 0);
+  else levelBegin(0);
+}
+
+// Leveling gains for a load of kg: a straight line between the no-load set and
+// the set tuned at cfg.loadRefKg (beyond it, extrapolated up to MAX_LOAD_FACTOR).
+static __attribute__((noinline)) float lerpLoad(float noLoad, float atRef, float f) {
+  return noLoad + (atRef - noLoad) * f;
+}
+
+__attribute__((noinline)) void levelBegin(float kg) {   // called from 3 places: keep one copy
+  float f = (cfg.loadRefKg > 0) ? constrain(kg / cfg.loadRefKg, 0, MAX_LOAD_FACTOR) : 0;
+  kpNow  = lerpLoad(cfg.kp, cfg.kpLoad, f);
+  kiNow  = lerpLoad(cfg.ki, cfg.kiLoad, f);
+  kdNow  = lerpLoad(cfg.kd, cfg.kdLoad, f);
+  minNow = min(lerpLoad(cfg.minSpeed, cfg.minSpeedLoad, f), cfg.maxSpeed);
+  Serial.print(F("# Load "));  Serial.print(kg);          // kg weighed and the mix used
+  Serial.print(F(" kg f "));   Serial.println(f);         // (0 = no-load gains, 1 = the loadRefKg gains)
 
   actuatorsStop();
   filterSeeded = false;          // restart the angle from the accelerometer (platform is still now)
@@ -227,6 +252,7 @@ void levelStart() {
 }
 
 void levelCancel() {
+  if (state == ST_SAMPLING && job == JOB_WEIGH) scaleJobCancel();
   if (state == ST_LEVELING) {
     actuatorsStop();
     state = ST_IDLE;
@@ -342,7 +368,7 @@ void jogTick(uint32_t now) {
 // ------------------------------------------------------------ PID
 // Returns the PID output for actuator i (0 while it is resting inside the band).
 // e is the corner error in degrees. The caller turns this into PWM.
-static float pidStep(uint8_t i, float e, float dt, float gain) {
+static float pidStep(uint8_t i, float e, float dt) {
   Actuator &a = act[i];
   float mag  = fabs(e);
   float band = cfg.levelTol * 0.5f;      // start moving outside this...
@@ -363,9 +389,9 @@ static float pidStep(uint8_t i, float e, float dt, float gain) {
 
   float d = (e - a.prevErr) / dt;
   a.prevErr = e;
-  float u = (cfg.kp * e + cfg.ki * a.integ + cfg.kd * d) * gain;
+  float u = kpNow * e + kiNow * a.integ + kdNow * d;               // gains for this load (levelBegin)
 
-  if (fabs(u) < cfg.maxSpeed - cfg.minSpeed) a.integ += e * dt;   // anti-windup: no integrating while saturated
+  if (fabs(u) < cfg.maxSpeed - minNow) a.integ += e * dt;         // anti-windup: no integrating while saturated
   if (u == 0) u = (e > 0) ? 0.001f : -0.001f;                      // active means moving, even at minSpeed
   return u;
 }
@@ -374,7 +400,7 @@ static float pidStep(uint8_t i, float e, float dt, float gain) {
 // it. If either output is past the limit both are scaled down together, so the
 // difference between them (the roll correction) is kept.
 static void driveBoth(float u1, float u2) {
-  float span = cfg.maxSpeed - cfg.minSpeed;
+  float span = cfg.maxSpeed - minNow;
   float m = max(fabs(u1), fabs(u2));
   if (m > span && m > 0) {
     u1 *= span / m;
@@ -383,7 +409,7 @@ static void driveBoth(float u1, float u2) {
   float u[2] = {u1, u2};
   for (uint8_t i = 0; i < 2; i++) {
     if (u[i] == 0) { actuatorDrive(i, 0); continue; }
-    int16_t speed = (int16_t)(cfg.minSpeed + fabs(u[i]));
+    int16_t speed = (int16_t)(minNow + fabs(u[i]));
     actuatorDrive(i, u[i] > 0 ? speed : -speed);
   }
 }
@@ -524,17 +550,7 @@ void levelTick(uint32_t now, float dt) {
   float e1 = ePitch - MIX_ROLL * eRoll;      // actuator 1 at 150 deg
   float e2 = ePitch + MIX_ROLL * eRoll;      // actuator 2 at 30 deg
 
-  // Mass compensation: a loaded platform needs more drive for the same speed.
-  // Actuator 1 sits between load cells A and B, actuator 2 between B and C.
-  // Only after a Tare: before it, the arms' own weight reads as load (6.2 kg on
-  // A) and would give one actuator ~30% more drive than the other.
-  float g1 = 1, g2 = 1;
-  if (massComp && tared) {
-    g1 = 1 + constrain(sqrt(weight[0] * weight[0] + weight[1] * weight[1]) / MASS_COMP_FULL_KG, 0, 1);
-    g2 = 1 + constrain(sqrt(weight[1] * weight[1] + weight[2] * weight[2]) / MASS_COMP_FULL_KG, 0, 1);
-  }
-
-  driveBoth(pidStep(0, e1, dt, g1), pidStep(1, e2, dt, g2));
+  driveBoth(pidStep(0, e1, dt), pidStep(1, e2, dt));   // gains chosen for the load in levelBegin
 
   // Both actuators resting inside their bands means pitch and roll are both
   // inside levelTol (see MIX_ROLL: |pitch| < tol/2, |roll| < 0.87 tol).

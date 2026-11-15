@@ -33,13 +33,10 @@ where to put it.
    check the gyro-zero fix for the erratic leveling), Tare, Balance.
 2. **Balance direction check** with the bottle on one arm: bottle on arm A
    (210 deg) should give a weight angle of about 30 deg, laser pointing there.
-3. **Load boost (to implement).** With a tire on, the actuators need more
-   drive. The old code added a boost from the measured tire weight. Mass Comp
-   is a first version (scales drive up to 2x at 20 kg) and must now be tested
-   with a real tire: MinSpeed probably has to rise with load too (PWM 20 moves
-   an empty platform, maybe not a loaded one), and the boost should help the
-   final slow approach, not just top speed. Then re-tune with a tire on.
-4. Re-check the load cells with a weighed reference mass.
+3. Re-check the load cells with a weighed reference mass.
+4. When a heavier wheel is available (car wheel, 15-25 kg), tune at that
+   weight too: the load interpolation currently has one loaded point (8.66 kg)
+   and holds its line only up to 2x that.
 
 ## Status
 
@@ -74,6 +71,16 @@ Motion and leveling (2026-11-13):
 - [x] MPU orientation is a setting in machine axes (TopAxisX/Y, BaseAxisX/Y);
       platform MPU is upside down, frame MPU face up (checked with a block
       under the 270 deg side, docs/Setup.md)
+
+Load compensation (2026-11-14, 4.80-12 trailer tire, 8.66 kg):
+- [x] Under 8.66 kg the actuators still move at PWM 15 (raising ~10% slower
+      than lowering); the no-load gains already level it in 1.2-1.6 s.
+- [x] Load-tuned set: Kp 300, Ki 5, Kd 15, MinSpeed 20 (Kd 15 gave the least
+      overshoot; Kp 400 settled worse; Ki 10 no better).
+- [x] Mass Comp now = Level weighs first (~0.3 s) and interpolates the gains
+      linearly between the no-load and 8.66 kg sets (up to 2x 8.66 kg).
+      Replaces the old drive multiplier.
+- [ ] Verify on the machine with the tire after a fresh Tare
 
 Balance and laser (2026-11-13):
 - [x] Balance -> screen -> Ack -> laser through the relay; angle and mass

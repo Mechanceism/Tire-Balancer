@@ -57,7 +57,7 @@ streams). The screen ignores them.
 | Command | Default | What it does |
 |---|---|---|
 | `AutoStopOn` / `AutoStopOff` | on | Off = keep hunting for level forever (demo mode). |
-| `MassCompOn` / `MassCompOff` | off | More actuator drive as the load on the platform goes up (up to 2x at 20 kg). |
+| `MassCompOn` / `MassCompOff` | off (the screen turns it on) | Load compensation. `Level` first weighs the platform (~0.3 s) and uses leveling gains interpolated between the no-load set and the `*Load` set for that weight. Needs a `Tare`; without one the no-load gains are used. Prints `# Load <kg> kg f <factor>`. |
 | `TestMassOn` / `TestMassOff` | off | Add `TestMass` kg to every load cell (bench testing). |
 | `LaserOn` / `LaserOff` / `LaserToggle` | off | Laser + servo pointing at the last balance result. |
 | `ManualLaserOn` / `ManualLaserOff` | off | Point at `LaserAngle` instead of the result. |
@@ -79,6 +79,8 @@ streams). The screen ignores them.
 | `Kp<n>` | PWM per deg | yes | PID proportional gain. |
 | `Ki<n>` | PWM per deg·s | yes | PID integral gain. |
 | `Kd<n>` | PWM per deg/s | yes | PID derivative gain (0 = PI controller). |
+| `LoadRef<n>` | kg | yes | Load the `*Load` gains were tuned at (8.66). The mix is linear in weight, up to 2x this. |
+| `KpLoad<n>` / `KiLoad<n>` / `KdLoad<n>` / `MinSpeedLoad<n>` | as Kp etc. | yes | Leveling gains with `LoadRef` kg on the platform. |
 | `Gyro<n>` | 0-0.995 | yes | Gyro blending (complementary filter). 0 = accelerometer only; 0.98 tuned. |
 | `Alpha<n>` | 0-0.99 | yes | Angle smoothing, only used with `Gyro0`. Higher = smoother but slower. |
 | `LevelTol<n>` | deg | yes | Pitch and roll must both be inside this to count as level. |

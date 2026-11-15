@@ -102,7 +102,7 @@ void loop() {
   }
   jogTick(now);
 
-  if (state == ST_SAMPLING || dbgScale || (state == ST_LEVELING && massComp)) scalePoll(now);
+  if (state == ST_SAMPLING || dbgScale) scalePoll(now);
 
   eventTick(now);
   debugTick(now);

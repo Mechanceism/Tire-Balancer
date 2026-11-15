@@ -60,6 +60,13 @@ static void jobFinish() {
   job   = JOB_NONE;
   state = ST_IDLE;
 
+  if (done == JOB_WEIGH) {          // quick weigh before leveling (must come before the Cal test)
+    float kg = 0;
+    for (uint8_t i = 0; i < 3; i++) kg += (avg[i] - tareRaw[i]) / cfg.cal[i];
+    levelBegin(kg);
+    return;
+  }
+
   if (done == JOB_TARE) {
     for (uint8_t i = 0; i < 3; i++) tareRaw[i] = avg[i];
     tared = true;
@@ -115,12 +122,14 @@ void scalePoll(uint32_t now) {
     if (job != JOB_NONE) {
       for (uint8_t i = 0; i < 3; i++) jobSum[i] += raw[i];
       jobSetStart = now;
-      if (++jobCount >= JOB_SAMPLES) jobFinish();
+      if (++jobCount >= (job == JOB_WEIGH ? WEIGH_SAMPLES : JOB_SAMPLES)) jobFinish();
     }
   } else if (job != JOB_NONE && (int32_t)(now - jobSetStart) > (int32_t)SCALE_TIMEOUT_MS) {
+    bool weighing = (job == JOB_WEIGH);
     job   = JOB_NONE;
     state = ST_IDLE;
-    eventError(ERR_SCALE);
+    if (weighing) levelBegin(0);    // can't weigh: level anyway with the no-load gains
+    else eventError(ERR_SCALE);
   }
 }
 
