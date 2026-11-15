@@ -31,10 +31,12 @@ void settingsDefaults() {
   cfg.kdLoad       = 15;
   cfg.minSpeedLoad = 20;
 
-  // Factory zero: raw readings, empty platform with arms (2026-11-14). SetZero refreshes it.
-  cfg.zeroRaw[0]   = 623605;
-  cfg.zeroRaw[1]   = 15458;
-  cfg.zeroRaw[2]   = 92908;
+  // Factory zero: raw readings, empty platform with arms (SetZero, 2026-11-14).
+  // All three read ~12000 counts (~0.12 kg) higher than earlier the same day,
+  // so expect some drift; it only nudges the Mass Comp gains.
+  cfg.zeroRaw[0]   = 635257;
+  cfg.zeroRaw[1]   = 28158;
+  cfg.zeroRaw[2]   = 104115;
   cfg.alpha       = 0.60;       // only used with the gyro off (Gyro0)
   cfg.levelTol    = 0.10;
   cfg.laserOffset = 79.5;       // this servo's zero is ~80 deg off (82 pointed 2-3 deg CCW, 2026-11-13)

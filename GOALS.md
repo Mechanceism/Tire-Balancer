@@ -85,7 +85,8 @@ Load compensation (2026-11-14, 4.80-12 trailer tire, 8.66 kg):
       Tare stays required (empty platform) for Balance. Checked without a
       Tare, tire on: weighed 9.01 kg (Tare had said 8.66) using a factory
       zero taken from earlier readings.
-- [ ] Run SetZero on the empty platform to refresh the factory zero
+- [x] SetZero run on the empty platform (635257 / 28158 / 104115); Level then
+      weighs the empty platform as 0.00 kg
 
 Balance and laser (2026-11-13):
 - [x] Balance -> screen -> Ack -> laser through the relay; angle and mass
